@@ -1,0 +1,853 @@
+let appData = null;
+let monthlyChart = null;
+
+let currentPage = "overview";
+let currentChannel = "all";
+let currentDateRange = "7";
+let currentSearch = "";
+
+const CHANNEL_TRAFFIC_KEYS = {
+  "Google Ads": "google_ads",
+  Instagram: "instagram",
+  "Twitter/X": "twitter_x",
+  Website: "website"
+};
+
+/* ================= ELEMENTS ================= */
+const registerPage = document.getElementById("registerPage");
+const loginPage = document.getElementById("loginPage");
+const dashboardPage = document.getElementById("dashboardPage");
+const app = document.getElementById("app");
+
+const registerForm = document.getElementById("registerForm");
+const loginForm = document.getElementById("loginForm");
+
+const goToLogin = document.getElementById("goToLogin");
+const goToRegister = document.getElementById("goToRegister");
+const logoutButton = document.getElementById("logoutButton");
+
+const searchInput = document.getElementById("searchInput");
+const channelFilter = document.getElementById("channelFilter");
+const dateFilter = document.getElementById("dateFilter");
+
+/* ================= PAGE SWITCHING ================= */
+function showRegisterPage() {
+  registerPage.classList.remove("hidden");
+  loginPage.classList.add("hidden");
+  dashboardPage.classList.add("hidden");
+}
+
+function showLoginPage() {
+  registerPage.classList.add("hidden");
+  loginPage.classList.remove("hidden");
+  dashboardPage.classList.add("hidden");
+}
+
+function showDashboardPage() {
+  registerPage.classList.add("hidden");
+  loginPage.classList.add("hidden");
+  dashboardPage.classList.remove("hidden");
+
+  fetchEduFunnelData();
+}
+
+/* ================= AUTH ================= */
+goToLogin.addEventListener("click", showLoginPage);
+goToRegister.addEventListener("click", showRegisterPage);
+
+registerForm.addEventListener("submit", function (event) {
+  event.preventDefault();
+
+  const name = document.getElementById("registerName").value.trim();
+  const email = document.getElementById("registerEmail").value.trim();
+  const password = document.getElementById("registerPassword").value;
+  const confirmPassword = document.getElementById("confirmPassword").value;
+
+  if (password !== confirmPassword) {
+    alert("Password dan Confirm Password tidak sama.");
+    return;
+  }
+
+  localStorage.setItem("eduUserName", name);
+  localStorage.setItem("eduUserEmail", email);
+  localStorage.setItem("eduUserPassword", password);
+
+  alert("Akun berhasil dibuat. Silakan login.");
+  showLoginPage();
+});
+
+loginForm.addEventListener("submit", function (event) {
+  event.preventDefault();
+
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+
+  const savedEmail = localStorage.getItem("eduUserEmail");
+  const savedPassword = localStorage.getItem("eduUserPassword");
+
+  const isRegisteredUser = email === savedEmail && password === savedPassword;
+  const isDemoUser = email === "admin@institution.edu" && password === "admin123";
+
+  if (isRegisteredUser || isDemoUser) {
+    localStorage.setItem("isLoggedIn", "true");
+    showDashboardPage();
+  } else {
+    alert("Email atau password salah.");
+  }
+});
+
+logoutButton.addEventListener("click", function () {
+  localStorage.removeItem("isLoggedIn");
+  showLoginPage();
+});
+
+/* ================= FETCH DATA ================= */
+function getLocalEduFunnelData() {
+  if (!window.eduFunnelData) return null;
+
+  return JSON.parse(JSON.stringify(window.eduFunnelData));
+}
+
+function validateEduFunnelData(data) {
+  return data && Array.isArray(data.sources);
+}
+
+async function fetchEduFunnelData() {
+  try {
+    app.innerHTML = `
+      <section class="loading-state">
+        <h2>Loading data...</h2>
+        <p>Sedang mengambil data dari data_funnel.json.</p>
+      </section>
+    `;
+
+    if (window.location.protocol === "file:") {
+      const localData = getLocalEduFunnelData();
+
+      if (!validateEduFunnelData(localData)) {
+        throw new Error("Data lokal belum tersedia.");
+      }
+
+      appData = localData;
+    } else {
+      const response = await fetch("data_funnel.json");
+
+      if (!response.ok) {
+        throw new Error("data_funnel.json tidak ditemukan.");
+      }
+
+      appData = await response.json();
+    }
+
+    if (!validateEduFunnelData(appData)) {
+      throw new Error("Format data_funnel tidak valid.");
+    }
+
+    setupNavigation();
+    setupSearch();
+    setupFilters();
+
+    renderPage("overview");
+  } catch (error) {
+    console.error("Gagal mengambil data:", error);
+
+    const fallbackData = getLocalEduFunnelData();
+
+    if (validateEduFunnelData(fallbackData)) {
+      appData = fallbackData;
+      setupNavigation();
+      setupSearch();
+      setupFilters();
+      renderPage("overview");
+      return;
+    }
+
+    app.innerHTML = `
+      <section class="empty-state">
+        <h2>Data gagal dimuat</h2>
+        <p>Buka lewat server lokal, atau pastikan file data_funnel.js dan data_funnel.json ada di folder proyek.</p>
+      </section>
+    `;
+  }
+}
+
+/* ================= NAVIGATION ================= */
+function setupNavigation() {
+  const menuItems = document.querySelectorAll(".menu-item");
+
+  menuItems.forEach(function (item) {
+    item.onclick = function () {
+      setActiveMenu(item.dataset.page);
+      renderPage(item.dataset.page);
+    };
+  });
+}
+
+function setActiveMenu(page) {
+  const menuItems = document.querySelectorAll(".menu-item");
+
+  menuItems.forEach(function (item) {
+    item.classList.remove("active");
+
+    if (item.dataset.page === page) {
+      item.classList.add("active");
+    }
+  });
+}
+
+/* ================= SEARCH & FILTER ================= */
+function setupSearch() {
+  if (!searchInput) return;
+
+  searchInput.oninput = function () {
+    currentSearch = searchInput.value.toLowerCase().trim();
+    renderPage(currentPage);
+  };
+}
+
+function setupFilters() {
+  if (channelFilter) {
+    channelFilter.onchange = function () {
+      currentChannel = channelFilter.value;
+      renderPage(currentPage);
+    };
+  }
+
+  if (dateFilter) {
+    dateFilter.onchange = function () {
+      currentDateRange = dateFilter.value;
+      renderPage(currentPage);
+    };
+  }
+}
+
+/* ================= DATE RANGE DATA ================= */
+function getMonthlyChannelTraffic() {
+  return appData.monthly_channel_traffic || [
+    { month: "Jan", google_ads: 200, instagram: 220, twitter_x: 180, website: 190 },
+    { month: "Feb", google_ads: 240, instagram: 260, twitter_x: 210, website: 230 },
+    { month: "Mar", google_ads: 256, instagram: 266, twitter_x: 227, website: 251 }
+  ];
+}
+
+function getChartDataByDateRange() {
+  const monthlyData = getMonthlyChannelTraffic();
+  const latestMonth = monthlyData[monthlyData.length - 1];
+
+  if (currentDateRange === "month") {
+    return latestMonth ? [latestMonth] : [];
+  }
+
+  if (currentDateRange === "year") {
+    return monthlyData;
+  }
+
+  if (!latestMonth) return [];
+
+  return [
+    {
+      month: "Last 7 Days",
+      google_ads: Math.round(Number(latestMonth.google_ads) * 7 / 30),
+      instagram: Math.round(Number(latestMonth.instagram) * 7 / 30),
+      twitter_x: Math.round(Number(latestMonth.twitter_x) * 7 / 30),
+      website: Math.round(Number(latestMonth.website) * 7 / 30)
+    }
+  ];
+}
+
+function getVisitorsByChannel() {
+  const chartData = getChartDataByDateRange();
+
+  return Object.entries(CHANNEL_TRAFFIC_KEYS).reduce(function (totals, [channelName, trafficKey]) {
+    totals[channelName] = chartData.reduce(function (total, item) {
+      return total + Number(item[trafficKey] || 0);
+    }, 0);
+
+    return totals;
+  }, {});
+}
+
+function buildSourceForVisitors(source, visitors) {
+  const baseVisitors = Number(source.pengunjung);
+  const ratio = baseVisitors === 0 ? 0 : visitors / baseVisitors;
+  const enrolled = Math.round(Number(source.berkuliah) * ratio);
+  const conversionRate = visitors === 0 ? 0 : (enrolled / visitors) * 100;
+
+  return {
+    ...source,
+    pengunjung: visitors,
+    daftar: Math.round(Number(source.daftar) * ratio),
+    test: Math.round(Number(source.test) * ratio),
+    daftar_ulang: Math.round(Number(source.daftar_ulang) * ratio),
+    berkuliah: enrolled,
+    conversion_rate: conversionRate.toFixed(2)
+  };
+}
+
+function getDateRangeSources() {
+  const visitorsByChannel = getVisitorsByChannel();
+
+  return appData.sources.map(function (source) {
+    const visitors = Number(visitorsByChannel[source.name] || 0);
+    return buildSourceForVisitors(source, visitors);
+  });
+}
+
+/* ================= FILTERED DATA ================= */
+function getFilteredSources() {
+  let sources = getDateRangeSources();
+
+  if (currentChannel !== "all") {
+    sources = sources.filter(function (source) {
+      return source.name === currentChannel;
+    });
+  }
+
+  if (currentSearch !== "") {
+    sources = sources.filter(function (source) {
+      return source.name.toLowerCase().includes(currentSearch);
+    });
+  }
+
+  return sources;
+}
+
+function getFilteredSummary() {
+  const sources = getFilteredSources();
+
+  if (sources.length === 0) {
+    return {
+      total_pengunjung: 0,
+      total_daftar: 0,
+      total_test: 0,
+      total_daftar_ulang: 0,
+      total_berkuliah: 0
+    };
+  }
+
+  return {
+    total_pengunjung: sources.reduce((total, item) => total + Number(item.pengunjung), 0),
+    total_daftar: sources.reduce((total, item) => total + Number(item.daftar), 0),
+    total_test: sources.reduce((total, item) => total + Number(item.test), 0),
+    total_daftar_ulang: sources.reduce((total, item) => total + Number(item.daftar_ulang), 0),
+    total_berkuliah: sources.reduce((total, item) => total + Number(item.berkuliah), 0)
+  };
+}
+
+function getDateRangeLabel() {
+  if (currentDateRange === "month") return "This Month";
+  if (currentDateRange === "year") return "This Year";
+  return "Last 7 Days";
+}
+
+function getChannelTrafficTitle() {
+  if (currentDateRange === "month") return "This Month Channel Traffic";
+  if (currentDateRange === "year") return "Monthly Channel Traffic";
+  return "Last 7 Days Channel Traffic";
+}
+
+function renderEmptyState() {
+  app.innerHTML = `
+    <section class="empty-state">
+      <h2>Data tidak ditemukan</h2>
+      <p>Coba ubah filter channel, rentang tanggal, atau keyword pencarian.</p>
+    </section>
+  `;
+}
+
+/* ================= PAGE RENDER ================= */
+function renderPage(page) {
+  currentPage = page;
+
+  if (monthlyChart) {
+    monthlyChart.destroy();
+    monthlyChart = null;
+  }
+
+  if (page === "overview") renderOverview();
+  if (page === "channel") renderChannelAnalysis();
+  if (page === "funnel") renderFunnelDepth();
+  if (page === "table") renderDataTable();
+}
+
+/* ================= HELPERS ================= */
+function getTotalConversionRate() {
+  const summary = getFilteredSummary();
+
+  if (summary.total_pengunjung === 0) {
+    return "0.0";
+  }
+
+  return ((summary.total_berkuliah / summary.total_pengunjung) * 100).toFixed(1);
+}
+
+function getSummaryStages() {
+  const summary = getFilteredSummary();
+
+  return [
+    { label: "Pengunjung", count: Number(summary.total_pengunjung) },
+    { label: "Daftar", count: Number(summary.total_daftar) },
+    { label: "Test", count: Number(summary.total_test) },
+    { label: "Daftar Ulang", count: Number(summary.total_daftar_ulang) },
+    { label: "Berkuliah", count: Number(summary.total_berkuliah) }
+  ];
+}
+
+function getHighestDrop(stages) {
+  let highestDrop = {
+    label: "-",
+    value: 0,
+    percent: 0
+  };
+
+  for (let i = 1; i < stages.length; i++) {
+    const previous = stages[i - 1];
+    const current = stages[i];
+
+    if (previous.count === 0) continue;
+
+    const dropValue = previous.count - current.count;
+    const dropPercent = (dropValue / previous.count) * 100;
+
+    if (dropValue > highestDrop.value) {
+      highestDrop = {
+        label: `${previous.label} ke ${current.label}`,
+        value: dropValue,
+        percent: dropPercent
+      };
+    }
+  }
+
+  return highestDrop;
+}
+
+/* ================= OVERVIEW ================= */
+function renderOverview() {
+  const filteredSources = getFilteredSources();
+
+  if (filteredSources.length === 0) {
+    renderEmptyState();
+    return;
+  }
+
+  const summary = getFilteredSummary();
+  const stages = getSummaryStages();
+  const highestDrop = getHighestDrop(stages);
+
+  const bestSource = [...filteredSources].sort(function (a, b) {
+    return Number(b.conversion_rate) - Number(a.conversion_rate);
+  })[0];
+
+  app.innerHTML = `
+    <section class="page-title">
+      <p>STUDENT ACQUISITION OVERVIEW</p>
+      <h1>Student Acquisition Overview</h1>
+      <span>Monitor ${getDateRangeLabel().toLowerCase()} conversion dynamics and pinpoint friction in the enrollment pipeline.</span>
+    </section>
+
+    <section class="summary">
+      <div class="summary-card">
+        <h3>Total Visitors</h3>
+        <p>${summary.total_pengunjung.toLocaleString("id-ID")}</p>
+      </div>
+
+      <div class="summary-card">
+        <h3>Qualified Leads</h3>
+        <p>${summary.total_daftar.toLocaleString("id-ID")}</p>
+      </div>
+
+      <div class="summary-card">
+        <h3>Conversion Rate</h3>
+        <p>${getTotalConversionRate()}%</p>
+      </div>
+    </section>
+
+    <section class="dashboard-grid">
+      <div class="card">
+        <div class="section-header">
+          <div>
+            <h2>Acquisition Funnel</h2>
+            <span>Visitor-to-Enrollment Flow</span>
+          </div>
+        </div>
+
+        <div id="overviewFunnel"></div>
+      </div>
+
+      <aside class="card insight-card">
+        <h2>Key Insight</h2>
+
+        <div class="insight-value">${highestDrop.percent.toFixed(1)}%</div>
+
+        <p>
+          Significant drop-off detected between
+          <strong>${highestDrop.label}</strong>.
+          Total users lost: ${highestDrop.value.toLocaleString("id-ID")}.
+        </p>
+
+        <hr />
+
+        <p>
+          Best channel:
+          <strong>${bestSource.name}</strong>
+          with conversion rate ${bestSource.conversion_rate}%.
+        </p>
+
+        <button class="auth-button report-btn" onclick="downloadReport()">
+          Generate Detailed Report
+        </button>
+      </aside>
+    </section>
+  `;
+
+  renderFunnelBars("overviewFunnel", stages);
+}
+
+/* ================= CHANNEL ANALYSIS ================= */
+function renderChannelAnalysis() {
+  const filteredSources = getFilteredSources();
+
+  if (filteredSources.length === 0) {
+    renderEmptyState();
+    return;
+  }
+
+  const channelCards = filteredSources.map(function (source) {
+    const badgeClass = source.status === "Alert" ? "risk" : "stable";
+
+    return `
+      <div class="channel-card">
+        <div class="channel-top">
+          <h2>${source.name}</h2>
+          <span class="badge ${badgeClass}">${source.status}</span>
+        </div>
+
+        <p class="label">Visitors</p>
+        <h3>${Number(source.pengunjung).toLocaleString("id-ID")}</h3>
+
+        <div class="channel-stats">
+          <div>
+            <span>Converted</span>
+            <strong>${source.berkuliah}</strong>
+          </div>
+
+          <div>
+            <span>Conv. Rate</span>
+            <strong>${source.conversion_rate}%</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  app.innerHTML = `
+    <section class="page-title">
+      <p>ACQUISITION SOURCES</p>
+      <h1>Channel Performance</h1>
+      <span>${getDateRangeLabel()} engagement and conversion tracking across acquisition sources.</span>
+    </section>
+
+    <section class="channel-grid">
+      ${channelCards}
+    </section>
+
+    <section class="card">
+      <h2>${getChannelTrafficTitle()}</h2>
+      <p class="label">${getDateRangeLabel()} visitor volume across all acquisition channels.</p>
+      <canvas id="monthlyChart"></canvas>
+    </section>
+  `;
+
+  renderMonthlyChart();
+}
+
+/* ================= FUNNEL DEPTH ================= */
+function renderFunnelDepth() {
+  const filteredSources = getFilteredSources();
+
+  if (filteredSources.length === 0) {
+    renderEmptyState();
+    return;
+  }
+
+  const stages = getSummaryStages();
+  const highestDrop = getHighestDrop(stages);
+
+  app.innerHTML = `
+    <section class="page-title">
+      <p>ACQUISITION INTELLIGENCE</p>
+      <h1>Funnel Depth Analysis</h1>
+      <span>Tracking ${getDateRangeLabel().toLowerCase()} prospective student progression from initial website visit to confirmed enrollment.</span>
+    </section>
+
+    <section class="dashboard-grid">
+      <div class="card">
+        <h2>Conversion Stages</h2>
+        <div id="depthFunnel"></div>
+      </div>
+
+      <aside>
+        <div class="card friction-card">
+          <h2>Registration Friction</h2>
+          <p>
+            The <strong>${highestDrop.percent.toFixed(1)}% drop</strong>
+            between ${highestDrop.label} indicates friction in the onboarding process.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>Final Yield</h3>
+          <div class="final-yield">${getTotalConversionRate()}%</div>
+          <p>Overall conversion from visitor to enrolled student.</p>
+        </div>
+      </aside>
+    </section>
+  `;
+
+  renderFunnelBars("depthFunnel", stages);
+}
+
+/* ================= DATA TABLE ================= */
+function renderDataTable() {
+  const filteredSources = getFilteredSources();
+
+  if (filteredSources.length === 0) {
+    renderEmptyState();
+    return;
+  }
+
+  const summary = getFilteredSummary();
+
+  const rows = filteredSources.map(function (source) {
+    return `
+      <tr>
+        <td>${source.name}</td>
+        <td>${Number(source.pengunjung).toLocaleString("id-ID")}</td>
+        <td>${Number(source.daftar).toLocaleString("id-ID")}</td>
+        <td>${Number(source.test).toLocaleString("id-ID")}</td>
+        <td>${Number(source.daftar_ulang).toLocaleString("id-ID")}</td>
+        <td>${Number(source.berkuliah).toLocaleString("id-ID")}</td>
+        <td>${source.conversion_rate}%</td>
+        <td>${source.status}</td>
+      </tr>
+    `;
+  }).join("");
+
+  app.innerHTML = `
+    <section class="page-title">
+      <p>ANALYTICS DATA</p>
+      <h1>Acquisition Grid</h1>
+      <span>Analyze ${getDateRangeLabel().toLowerCase()} student performance data across primary digital channels.</span>
+    </section>
+
+    <section class="summary">
+      <div class="summary-card">
+        <h3>Total Visitors</h3>
+        <p>${summary.total_pengunjung.toLocaleString("id-ID")}</p>
+      </div>
+
+      <div class="summary-card">
+        <h3>Average CVR</h3>
+        <p>${getTotalConversionRate()}%</p>
+      </div>
+
+      <div class="summary-card">
+        <h3>Active Channels</h3>
+        <p>${filteredSources.length}</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Channel Source</th>
+            <th>Pengunjung</th>
+            <th>Daftar</th>
+            <th>Test</th>
+            <th>Daftar Ulang</th>
+            <th>Berkuliah</th>
+            <th>CVR</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          ${rows}
+
+          <tr class="total-row">
+            <td>TOTAL</td>
+            <td>${summary.total_pengunjung.toLocaleString("id-ID")}</td>
+            <td>${summary.total_daftar.toLocaleString("id-ID")}</td>
+            <td>${summary.total_test.toLocaleString("id-ID")}</td>
+            <td>${summary.total_daftar_ulang.toLocaleString("id-ID")}</td>
+            <td>${summary.total_berkuliah.toLocaleString("id-ID")}</td>
+            <td>${getTotalConversionRate()}%</td>
+            <td>Overall</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  `;
+}
+
+/* ================= FUNNEL BAR ================= */
+function renderFunnelBars(containerId, stages) {
+  const container = document.getElementById(containerId);
+  const firstCount = stages[0].count;
+
+  container.innerHTML = stages.map(function (stage, index) {
+    const width = firstCount === 0 ? 0 : (stage.count / firstCount) * 100;
+
+    let dropText = "";
+
+    if (index > 0) {
+      const previous = stages[index - 1];
+
+      if (previous.count > 0) {
+        const drop = previous.count - stage.count;
+        const dropPercent = (drop / previous.count) * 100;
+
+        dropText = `
+          <div class="drop">
+            ${dropPercent.toFixed(1)}% drop-off
+          </div>
+        `;
+      }
+    }
+
+    return `
+      <div class="funnel-stage">
+        <div class="stage-label">
+          <strong>${stage.label}</strong>
+          <span>${stage.count.toLocaleString("id-ID")}</span>
+        </div>
+
+        <div class="bar-bg">
+          <div class="bar-fill" style="width: ${width}%"></div>
+        </div>
+
+        ${dropText}
+      </div>
+    `;
+  }).join("");
+}
+
+/* ================= CHART ================= */
+function renderMonthlyChart() {
+  if (typeof Chart === "undefined") {
+    const chart = document.getElementById("monthlyChart");
+
+    if (chart) {
+      const chartMessage = document.createElement("div");
+      chartMessage.className = "empty-state";
+      chartMessage.innerHTML = `
+        <h2>Grafik belum tersedia</h2>
+        <p>Chart.js gagal dimuat. Data channel tetap bisa dibaca.</p>
+      `;
+
+      chart.replaceWith(chartMessage);
+    }
+
+    return;
+  }
+
+  const monthlyData = getChartDataByDateRange();
+
+  const labels = monthlyData.map(item => item.month);
+  const googleAds = monthlyData.map(item => item.google_ads);
+  const instagram = monthlyData.map(item => item.instagram);
+  const twitterX = monthlyData.map(item => item.twitter_x);
+  const website = monthlyData.map(item => item.website);
+
+  const ctx = document.getElementById("monthlyChart").getContext("2d");
+
+  monthlyChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: "Google Ads",
+          data: googleAds,
+          backgroundColor: "rgba(79, 140, 255, 0.7)"
+        },
+        {
+          label: "Instagram",
+          data: instagram,
+          backgroundColor: "rgba(0, 212, 255, 0.7)"
+        },
+        {
+          label: "Twitter/X",
+          data: twitterX,
+          backgroundColor: "rgba(255, 99, 132, 0.7)"
+        },
+        {
+          label: "Website",
+          data: website,
+          backgroundColor: "rgba(34, 197, 94, 0.7)"
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: {
+            color: "#cbd5e1"
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: "#cbd5e1" },
+          grid: { color: "rgba(255,255,255,0.06)" }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: "#cbd5e1" },
+          grid: { color: "rgba(255,255,255,0.06)" }
+        }
+      }
+    }
+  });
+}
+
+/* ================= DOWNLOAD REPORT ================= */
+function downloadReport() {
+  if (!appData) {
+    alert("Data belum siap.");
+    return;
+  }
+
+  const reportData = {
+    title: "EduFunnel Detailed Report",
+    generated_at: new Date().toLocaleString("id-ID"),
+    selected_channel: currentChannel,
+    date_range: currentDateRange,
+    search_keyword: currentSearch,
+    summary: getFilteredSummary(),
+    sources: getFilteredSources(),
+    monthly_channel_traffic: getChartDataByDateRange()
+  };
+
+  const jsonData = JSON.stringify(reportData, null, 2);
+  const blob = new Blob([jsonData], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "edufunnel-report.json";
+  link.click();
+
+  URL.revokeObjectURL(url);
+}
+
+/* ================= INIT ================= */
+window.addEventListener("load", function () {
+  if (localStorage.getItem("isLoggedIn") === "true") {
+    showDashboardPage();
+  } else {
+    showRegisterPage();
+  }
+});

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>EduFunnel</title>
+
+  <!-- Chart.js: direct dist path avoids the broken package-root source map URL. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+  <!-- REGISTER PAGE -->
+  <section id="registerPage" class="auth-page">
+    <div class="auth-brand">EduFunnel</div>
+
+    <div class="auth-wrapper">
+      <div class="auth-card">
+        <h1>Welcome to EduFunnel</h1>
+        <p>Create your institutional account to get started</p>
+
+        <form id="registerForm">
+          <label for="registerName">Full Name</label>
+          <input type="text" id="registerName" placeholder="Dr. Jane Smith" required />
+
+          <label for="registerEmail">Institutional Email</label>
+          <input type="email" id="registerEmail" placeholder="jane.smith@university.edu" required />
+
+          <label for="registerPassword">Password</label>
+          <input type="password" id="registerPassword" placeholder="********" required />
+
+          <label for="confirmPassword">Confirm Password</label>
+          <input type="password" id="confirmPassword" placeholder="********" required />
+
+          <button type="submit" class="auth-button">Create Account</button>
+        </form>
+
+        <p class="auth-link">
+          Already have an account?
+          <button id="goToLogin" type="button">Sign in</button>
+        </p>
+      </div>
+    </div>
+
+    <div class="auth-footer">&copy; 2026 EduFunnel Analytics</div>
+  </section>
+
+  <!-- LOGIN PAGE -->
+  <section id="loginPage" class="auth-page hidden">
+    <div class="auth-brand">EduFunnel</div>
+
+    <div class="auth-wrapper">
+      <div class="auth-card">
+        <div class="auth-icon">EF</div>
+
+        <h1>Welcome Back</h1>
+        <p>Enter your credentials to access your dashboard</p>
+
+        <form id="loginForm">
+          <label for="loginEmail">Email Address</label>
+          <input type="email" id="loginEmail" placeholder="admin@institution.edu" required />
+
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" placeholder="********" required />
+
+          <button type="submit" class="auth-button">Sign In &rarr;</button>
+        </form>
+
+        <p class="auth-link">
+          Don't have an account?
+          <button id="goToRegister" type="button">Create account</button>
+        </p>
+      </div>
+    </div>
+
+    <div class="auth-footer">&copy; 2026 EduFunnel Analytics</div>
+  </section>
+
+  <!-- DASHBOARD PAGE -->
+  <section id="dashboardPage" class="dashboard-page hidden">
+    <aside class="sidebar">
+      <div class="sidebar-main">
+        <div class="brand">
+          <div class="logo">EF</div>
+          <div>
+            <h2>EduFunnel</h2>
+            <p>Intelligence Suite</p>
+          </div>
+        </div>
+
+        <nav class="menu">
+          <button type="button" class="menu-item active" data-page="overview">Overview</button>
+          <button type="button" class="menu-item" data-page="channel">Channel Analysis</button>
+          <button type="button" class="menu-item" data-page="funnel">Funnel Depth</button>
+          <button type="button" class="menu-item" data-page="table">Data Tables</button>
+        </nav>
+      </div>
+
+      <div class="sidebar-bottom">
+        <button type="button" id="logoutButton">Logout</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="dashboard-header">
+        <div class="filter-group">
+          <select id="channelFilter">
+            <option value="all">All Channels</option>
+            <option value="Google Ads">Google Ads</option>
+            <option value="Instagram">Instagram</option>
+            <option value="Twitter/X">Twitter/X</option>
+            <option value="Website">Website</option>
+          </select>
+
+          <select id="dateFilter">
+            <option value="7">Last 7 Days</option>
+            <option value="month">This Month</option>
+            <option value="year">This Year</option>
+          </select>
+        </div>
+
+        <div class="search-box">
+          <input id="searchInput" type="text" placeholder="Search data..." />
+        </div>
+
+        <div class="header-actions">
+          <div class="avatar" title="Profile">
+            <span>User</span>
+          </div>
+        </div>
+      </header>
+
+      <section id="app">
+        <!-- Isi dashboard akan dirender dari js/main.js -->
+      </section>
+    </main>
+  </section>
+
+  <!-- JavaScript -->
+  <script src="js/data_funnel.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
