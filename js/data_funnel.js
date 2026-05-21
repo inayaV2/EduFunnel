@@ -140,87 +140,87 @@ window.eduFunnelData = {
   monthly_channel_traffic: [
     {
       month: "Jan",
-      google_ads: 200,
-      instagram: 220,
-      twitter_x: 180,
-      website: 190
+      google_ads: 19,
+      instagram: 18,
+      twitter_x: 23,
+      website: 18
     },
     {
       month: "Feb",
-      google_ads: 240,
-      instagram: 260,
-      twitter_x: 210,
-      website: 230
+      google_ads: 25,
+      instagram: 22,
+      twitter_x: 23,
+      website: 20
     },
     {
       month: "Mar",
-      google_ads: 256,
-      instagram: 266,
-      twitter_x: 227,
-      website: 251
+      google_ads: 14,
+      instagram: 16,
+      twitter_x: 14,
+      website: 16
     },
     {
       month: "Apr",
-      google_ads: 272,
-      instagram: 284,
-      twitter_x: 238,
-      website: 263
+      google_ads: 18,
+      instagram: 23,
+      twitter_x: 21,
+      website: 29
     },
     {
       month: "May",
-      google_ads: 290,
-      instagram: 304,
-      twitter_x: 246,
-      website: 278
+      google_ads: 29,
+      instagram: 23,
+      twitter_x: 24,
+      website: 20
     },
     {
       month: "Jun",
-      google_ads: 312,
-      instagram: 326,
-      twitter_x: 258,
-      website: 295
+      google_ads: 29,
+      instagram: 13,
+      twitter_x: 15,
+      website: 27
     },
     {
       month: "Jul",
-      google_ads: 335,
-      instagram: 348,
-      twitter_x: 270,
-      website: 312
+      google_ads: 12,
+      instagram: 25,
+      twitter_x: 17,
+      website: 21
     },
     {
       month: "Aug",
-      google_ads: 358,
-      instagram: 372,
-      twitter_x: 284,
-      website: 330
+      google_ads: 24,
+      instagram: 26,
+      twitter_x: 23,
+      website: 31
     },
     {
       month: "Sep",
-      google_ads: 382,
-      instagram: 396,
-      twitter_x: 301,
-      website: 351
+      google_ads: 19,
+      instagram: 27,
+      twitter_x: 15,
+      website: 21
     },
     {
       month: "Oct",
-      google_ads: 405,
-      instagram: 418,
-      twitter_x: 318,
-      website: 374
+      google_ads: 24,
+      instagram: 26,
+      twitter_x: 15,
+      website: 14
     },
     {
       month: "Nov",
-      google_ads: 430,
-      instagram: 445,
-      twitter_x: 335,
-      website: 398
+      google_ads: 15,
+      instagram: 21,
+      twitter_x: 21,
+      website: 15
     },
     {
       month: "Dec",
-      google_ads: 458,
-      instagram: 472,
-      twitter_x: 356,
-      website: 425
+      google_ads: 28,
+      instagram: 26,
+      twitter_x: 16,
+      website: 19
     }
   ]
 };
