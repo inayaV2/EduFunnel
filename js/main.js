@@ -6,6 +6,9 @@ let currentChannel = "all";
 let currentDateRange = "7";
 let currentSearch = "";
 
+const SUPABASE_URL = "https://tyjgxjawjqwerwemzkhy.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_afBHm3NGmsvCN7GUAKlNPw_-sAd5z26";
+
 const CHANNEL_TRAFFIC_KEYS = {
   "Google Ads": "google_ads",
   Instagram: "instagram",
@@ -112,36 +115,150 @@ function validateEduFunnelData(data) {
   return data && Array.isArray(data.sources);
 }
 
+function createSupabaseClient() {
+  if (!window.supabase || !window.supabase.createClient) {
+    throw new Error("Supabase client belum dimuat.");
+  }
+
+  return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+function mapSupabaseData(summaryRow, sourcesRows, trafficRows) {
+  if (!summaryRow || !Array.isArray(sourcesRows) || !Array.isArray(trafficRows)) {
+    throw new Error("Format data Supabase tidak lengkap.");
+  }
+
+  const summary = {
+    total_pengunjung: Number(summaryRow.total_pengunjung),
+    total_daftar: Number(summaryRow.total_daftar),
+    total_test: Number(summaryRow.total_test),
+    total_daftar_ulang: Number(summaryRow.total_daftar_ulang),
+    total_berkuliah: Number(summaryRow.total_berkuliah)
+  };
+
+  const conversionRate = summary.total_pengunjung === 0
+    ? 0
+    : Number(((summary.total_berkuliah / summary.total_pengunjung) * 100).toFixed(1));
+
+  return {
+    metadata: {
+      project_name: summaryRow.project_name,
+      period: summaryRow.period,
+      generated_by: summaryRow.generated_by
+    },
+    summary: summary,
+    metric_cards: [
+      {
+        title: "Total Pengunjung",
+        value: summary.total_pengunjung
+      },
+      {
+        title: "Total Berkuliah",
+        value: summary.total_berkuliah
+      },
+      {
+        title: "Conversion Rate",
+        value: conversionRate
+      }
+    ],
+    funnel_stages: summaryRow.funnel_stages || [
+      "Pengunjung",
+      "Daftar",
+      "Test",
+      "Daftar Ulang",
+      "Berkuliah"
+    ],
+    funnel_data: summaryRow.funnel_data || [
+      summary.total_pengunjung,
+      summary.total_daftar,
+      summary.total_test,
+      summary.total_daftar_ulang,
+      summary.total_berkuliah
+    ],
+    sources: sourcesRows.map(function (source) {
+      return {
+        name: source.name,
+        pengunjung: Number(source.pengunjung),
+        daftar: Number(source.daftar),
+        test: Number(source.test),
+        daftar_ulang: Number(source.daftar_ulang),
+        berkuliah: Number(source.berkuliah),
+        conversion_rate: Number(source.conversion_rate),
+        drop_off: Number(source.drop_off),
+        progression_rates: source.progression_rates || {},
+        attrition_rates: source.attrition_rates || {},
+        ranking: Number(source.ranking),
+        status: source.status
+      };
+    }),
+    monthly_channel_traffic: trafficRows.map(function (item) {
+      return {
+        month: item.month,
+        google_ads: Number(item.google_ads),
+        instagram: Number(item.instagram),
+        twitter_x: Number(item.twitter_x),
+        website: Number(item.website)
+      };
+    })
+  };
+}
+
+async function fetchSupabaseData() {
+  const client = createSupabaseClient();
+
+  const [summaryResult, sourcesResult, trafficResult] = await Promise.all([
+    client
+      .from("summary_metrics")
+      .select("*")
+      .eq("period", "2025")
+      .maybeSingle(),
+    client
+      .from("funnel_sources")
+      .select("*")
+      .eq("period", "2025")
+      .order("id", { ascending: true }),
+    client
+      .from("monthly_channel_traffic")
+      .select("*")
+      .eq("period", "2025")
+      .order("month_order", { ascending: true })
+  ]);
+
+  if (summaryResult.error) throw summaryResult.error;
+  if (sourcesResult.error) throw sourcesResult.error;
+  if (trafficResult.error) throw trafficResult.error;
+
+  return mapSupabaseData(summaryResult.data, sourcesResult.data, trafficResult.data);
+}
+
+async function fetchJsonFallbackData() {
+  if (window.location.protocol !== "file:") {
+    const response = await fetch("data_funnel.json");
+
+    if (response.ok) {
+      return response.json();
+    }
+  }
+
+  const localData = getLocalEduFunnelData();
+
+  if (validateEduFunnelData(localData)) {
+    return localData;
+  }
+
+  throw new Error("Fallback data_funnel tidak tersedia.");
+}
+
 async function fetchEduFunnelData() {
   try {
     app.innerHTML = `
       <section class="loading-state">
         <h2>Loading data...</h2>
-        <p>Sedang mengambil data dari data_funnel.json.</p>
+        <p>Sedang mengambil data dashboard dari Supabase.</p>
       </section>
     `;
 
-    if (window.location.protocol === "file:") {
-      const localData = getLocalEduFunnelData();
-
-      if (!validateEduFunnelData(localData)) {
-        throw new Error("Data lokal belum tersedia.");
-      }
-
-      appData = localData;
-    } else {
-      const response = await fetch("data_funnel.json");
-
-      if (!response.ok) {
-        throw new Error("data_funnel.json tidak ditemukan.");
-      }
-
-      appData = await response.json();
-    }
-
-    if (!validateEduFunnelData(appData)) {
-      throw new Error("Format data_funnel tidak valid.");
-    }
+    appData = await fetchSupabaseData();
 
     setupNavigation();
     setupSearch();
@@ -149,23 +266,36 @@ async function fetchEduFunnelData() {
 
     renderPage("overview");
   } catch (error) {
-    console.error("Gagal mengambil data:", error);
+    console.error("Gagal mengambil data dari Supabase:", error);
 
-    const fallbackData = getLocalEduFunnelData();
+    try {
+      app.innerHTML = `
+        <section class="loading-state">
+          <h2>Loading data...</h2>
+          <p>Supabase belum tersedia. Menggunakan fallback data_funnel.json.</p>
+        </section>
+      `;
 
-    if (validateEduFunnelData(fallbackData)) {
+      const fallbackData = await fetchJsonFallbackData();
+
+      if (!validateEduFunnelData(fallbackData)) {
+        throw new Error("Format fallback data_funnel tidak valid.");
+      }
+
       appData = fallbackData;
       setupNavigation();
       setupSearch();
       setupFilters();
       renderPage("overview");
       return;
+    } catch (fallbackError) {
+      console.error("Gagal mengambil fallback data:", fallbackError);
     }
 
     app.innerHTML = `
       <section class="empty-state">
         <h2>Data gagal dimuat</h2>
-        <p>Buka lewat server lokal, atau pastikan file data_funnel.js dan data_funnel.json ada di folder proyek.</p>
+        <p>Query Supabase gagal dan fallback data_funnel tidak tersedia.</p>
       </section>
     `;
   }

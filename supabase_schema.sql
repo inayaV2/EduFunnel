@@ -1,0 +1,205 @@
+-- EduFunnel Supabase schema and seed data
+-- Run this file in Supabase SQL Editor.
+
+begin;
+
+create table if not exists public.summary_metrics (
+  id bigint generated always as identity primary key,
+  project_name text not null,
+  period text not null unique,
+  generated_by text not null,
+  total_pengunjung integer not null,
+  total_daftar integer not null,
+  total_test integer not null,
+  total_daftar_ulang integer not null,
+  total_berkuliah integer not null,
+  funnel_stages jsonb not null,
+  funnel_data jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.funnel_sources (
+  id bigint generated always as identity primary key,
+  period text not null references public.summary_metrics(period) on delete cascade,
+  name text not null,
+  pengunjung integer not null,
+  daftar integer not null,
+  test integer not null,
+  daftar_ulang integer not null,
+  berkuliah integer not null,
+  conversion_rate numeric(6, 2) not null,
+  drop_off numeric(6, 2) not null,
+  progression_rates jsonb not null default '{}'::jsonb,
+  attrition_rates jsonb not null default '{}'::jsonb,
+  ranking integer not null,
+  status text not null,
+  created_at timestamptz not null default now(),
+  unique (period, name)
+);
+
+create table if not exists public.monthly_channel_traffic (
+  id bigint generated always as identity primary key,
+  period text not null references public.summary_metrics(period) on delete cascade,
+  month_order smallint not null,
+  month text not null,
+  google_ads integer not null,
+  instagram integer not null,
+  twitter_x integer not null,
+  website integer not null,
+  created_at timestamptz not null default now(),
+  unique (period, month_order)
+);
+
+alter table public.summary_metrics enable row level security;
+alter table public.funnel_sources enable row level security;
+alter table public.monthly_channel_traffic enable row level security;
+
+drop policy if exists "Allow public read summary metrics" on public.summary_metrics;
+drop policy if exists "Allow public read funnel sources" on public.funnel_sources;
+drop policy if exists "Allow public read monthly traffic" on public.monthly_channel_traffic;
+
+create policy "Allow public read summary metrics"
+on public.summary_metrics
+for select
+to anon
+using (true);
+
+create policy "Allow public read funnel sources"
+on public.funnel_sources
+for select
+to anon
+using (true);
+
+create policy "Allow public read monthly traffic"
+on public.monthly_channel_traffic
+for select
+to anon
+using (true);
+
+delete from public.monthly_channel_traffic where period = '2025';
+delete from public.funnel_sources where period = '2025';
+delete from public.summary_metrics where period = '2025';
+
+insert into public.summary_metrics (
+  project_name,
+  period,
+  generated_by,
+  total_pengunjung,
+  total_daftar,
+  total_test,
+  total_daftar_ulang,
+  total_berkuliah,
+  funnel_stages,
+  funnel_data
+) values (
+  'EduFunnel',
+  '2025',
+  'Frontend Dashboard System',
+  1000,
+  415,
+  208,
+  104,
+  51,
+  '["Pengunjung", "Daftar", "Test", "Daftar Ulang", "Berkuliah"]'::jsonb,
+  '[1000, 415, 208, 104, 51]'::jsonb
+);
+
+insert into public.funnel_sources (
+  period,
+  name,
+  pengunjung,
+  daftar,
+  test,
+  daftar_ulang,
+  berkuliah,
+  conversion_rate,
+  drop_off,
+  progression_rates,
+  attrition_rates,
+  ranking,
+  status
+) values
+(
+  '2025',
+  'Google Ads',
+  256,
+  103,
+  52,
+  26,
+  14,
+  5.47,
+  94.53,
+  '{"pengunjung_to_daftar": 40.2, "daftar_to_test": 50.5, "test_to_daftar_ulang": 50.0, "daftar_ulang_to_berkuliah": 53.8}'::jsonb,
+  '{"pengunjung_to_daftar": 59.8, "daftar_to_test": 49.5, "test_to_daftar_ulang": 50.0, "daftar_ulang_to_berkuliah": 46.2}'::jsonb,
+  1,
+  'Top'
+),
+(
+  '2025',
+  'Instagram',
+  266,
+  111,
+  55,
+  28,
+  14,
+  5.26,
+  94.74,
+  '{"pengunjung_to_daftar": 41.7, "daftar_to_test": 49.5, "test_to_daftar_ulang": 50.9, "daftar_ulang_to_berkuliah": 50.0}'::jsonb,
+  '{"pengunjung_to_daftar": 58.3, "daftar_to_test": 50.5, "test_to_daftar_ulang": 49.1, "daftar_ulang_to_berkuliah": 50.0}'::jsonb,
+  2,
+  'Stable'
+),
+(
+  '2025',
+  'Twitter/X',
+  227,
+  94,
+  47,
+  23,
+  10,
+  4.41,
+  95.59,
+  '{"pengunjung_to_daftar": 41.4, "daftar_to_test": 50.0, "test_to_daftar_ulang": 48.9, "daftar_ulang_to_berkuliah": 43.5}'::jsonb,
+  '{"pengunjung_to_daftar": 58.6, "daftar_to_test": 50.0, "test_to_daftar_ulang": 51.1, "daftar_ulang_to_berkuliah": 56.5}'::jsonb,
+  4,
+  'Alert'
+),
+(
+  '2025',
+  'Website',
+  251,
+  107,
+  54,
+  27,
+  13,
+  5.18,
+  94.82,
+  '{"pengunjung_to_daftar": 42.6, "daftar_to_test": 50.5, "test_to_daftar_ulang": 50.0, "daftar_ulang_to_berkuliah": 48.1}'::jsonb,
+  '{"pengunjung_to_daftar": 57.4, "daftar_to_test": 49.5, "test_to_daftar_ulang": 50.0, "daftar_ulang_to_berkuliah": 51.9}'::jsonb,
+  3,
+  'Stable'
+);
+
+insert into public.monthly_channel_traffic (
+  period,
+  month_order,
+  month,
+  google_ads,
+  instagram,
+  twitter_x,
+  website
+) values
+('2025', 1, 'Jan', 200, 220, 180, 190),
+('2025', 2, 'Feb', 240, 260, 210, 230),
+('2025', 3, 'Mar', 256, 266, 227, 251),
+('2025', 4, 'Apr', 272, 284, 238, 263),
+('2025', 5, 'May', 290, 304, 246, 278),
+('2025', 6, 'Jun', 312, 326, 258, 295),
+('2025', 7, 'Jul', 335, 348, 270, 312),
+('2025', 8, 'Aug', 358, 372, 284, 330),
+('2025', 9, 'Sep', 382, 396, 301, 351),
+('2025', 10, 'Oct', 405, 418, 318, 374),
+('2025', 11, 'Nov', 430, 445, 335, 398),
+('2025', 12, 'Dec', 458, 472, 356, 425);
+
+commit;
