@@ -1,4 +1,9 @@
 window.eduFunnelData = {
+  metadata: {
+    project_name: "EduFunnel",
+    period: "2025",
+    generated_by: "Frontend Dashboard System"
+  },
   summary: {
     total_pengunjung: 1000,
     total_daftar: 415,
@@ -6,6 +11,34 @@ window.eduFunnelData = {
     total_daftar_ulang: 104,
     total_berkuliah: 51
   },
+  metric_cards: [
+    {
+      title: "Total Pengunjung",
+      value: 1000
+    },
+    {
+      title: "Total Berkuliah",
+      value: 51
+    },
+    {
+      title: "Conversion Rate",
+      value: 5.1
+    }
+  ],
+  funnel_stages: [
+    "Pengunjung",
+    "Daftar",
+    "Test",
+    "Daftar Ulang",
+    "Berkuliah"
+  ],
+  funnel_data: [
+    1000,
+    415,
+    208,
+    104,
+    51
+  ],
   sources: [
     {
       name: "Google Ads",
@@ -15,6 +48,19 @@ window.eduFunnelData = {
       daftar_ulang: 26,
       berkuliah: 14,
       conversion_rate: 5.47,
+      drop_off: 94.53,
+      progression_rates: {
+        pengunjung_to_daftar: 40.2,
+        daftar_to_test: 50.5,
+        test_to_daftar_ulang: 50.0,
+        daftar_ulang_to_berkuliah: 53.8
+      },
+      attrition_rates: {
+        pengunjung_to_daftar: 59.8,
+        daftar_to_test: 49.5,
+        test_to_daftar_ulang: 50.0,
+        daftar_ulang_to_berkuliah: 46.2
+      },
       ranking: 1,
       status: "Top"
     },
@@ -26,6 +72,19 @@ window.eduFunnelData = {
       daftar_ulang: 28,
       berkuliah: 14,
       conversion_rate: 5.26,
+      drop_off: 94.74,
+      progression_rates: {
+        pengunjung_to_daftar: 41.7,
+        daftar_to_test: 49.5,
+        test_to_daftar_ulang: 50.9,
+        daftar_ulang_to_berkuliah: 50.0
+      },
+      attrition_rates: {
+        pengunjung_to_daftar: 58.3,
+        daftar_to_test: 50.5,
+        test_to_daftar_ulang: 49.1,
+        daftar_ulang_to_berkuliah: 50.0
+      },
       ranking: 2,
       status: "Stable"
     },
@@ -37,6 +96,19 @@ window.eduFunnelData = {
       daftar_ulang: 23,
       berkuliah: 10,
       conversion_rate: 4.41,
+      drop_off: 95.59,
+      progression_rates: {
+        pengunjung_to_daftar: 41.4,
+        daftar_to_test: 50.0,
+        test_to_daftar_ulang: 48.9,
+        daftar_ulang_to_berkuliah: 43.5
+      },
+      attrition_rates: {
+        pengunjung_to_daftar: 58.6,
+        daftar_to_test: 50.0,
+        test_to_daftar_ulang: 51.1,
+        daftar_ulang_to_berkuliah: 56.5
+      },
       ranking: 4,
       status: "Alert"
     },
@@ -48,6 +120,19 @@ window.eduFunnelData = {
       daftar_ulang: 27,
       berkuliah: 13,
       conversion_rate: 5.18,
+      drop_off: 94.82,
+      progression_rates: {
+        pengunjung_to_daftar: 42.6,
+        daftar_to_test: 50.5,
+        test_to_daftar_ulang: 50.0,
+        daftar_ulang_to_berkuliah: 48.1
+      },
+      attrition_rates: {
+        pengunjung_to_daftar: 57.4,
+        daftar_to_test: 49.5,
+        test_to_daftar_ulang: 50.0,
+        daftar_ulang_to_berkuliah: 51.9
+      },
       ranking: 3,
       status: "Stable"
     }
