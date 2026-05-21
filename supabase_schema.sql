@@ -3,6 +3,10 @@
 
 begin;
 
+drop table if exists public.monthly_channel_traffic cascade;
+drop table if exists public.funnel_sources cascade;
+drop table if exists public.summary_metrics cascade;
+
 create table if not exists public.summary_metrics (
   id bigint generated always as identity primary key,
   project_name text not null,
