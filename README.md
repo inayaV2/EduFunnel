@@ -29,6 +29,18 @@ const SUPABASE_ANON_KEY = "isi_dengan_publishable_anon_key";
 
 Project ini sudah diisi dengan URL Supabase dan publishable key yang diberikan. Jika memakai project Supabase lain, ganti dua nilai tersebut. Gunakan hanya publishable/anon key di frontend. Jangan memakai service role key atau secret key di file frontend.
 
+## Setup Login User
+
+Login dan register user memakai **Supabase Auth**.
+
+1. Buka Supabase Dashboard.
+2. Masuk ke **Authentication**.
+3. Buka menu **Users** untuk melihat user yang sudah register dari dashboard.
+4. Jika ingin register langsung bisa login tanpa cek email, buka **Authentication > Providers > Email** lalu matikan **Confirm email**.
+5. Jika **Confirm email** aktif, user harus membuka email verifikasi terlebih dahulu sebelum login.
+
+Data email dan password tidak disimpan di `localStorage`. Session login dikelola oleh Supabase Auth.
+
 ## Menjalankan Project
 
 Cara paling mudah:
@@ -67,3 +79,4 @@ Dengan mapping ini, fitur lama tetap berjalan:
 - Jangan commit service role key.
 - Jangan simpan secret key di JavaScript frontend.
 - Publishable/anon key boleh digunakan di frontend selama policy Supabase sudah dibatasi sesuai kebutuhan.
+- User authentication memakai Supabase Auth, bukan penyimpanan password manual di browser.

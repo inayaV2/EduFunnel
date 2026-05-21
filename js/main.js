@@ -5,6 +5,7 @@ let currentPage = "overview";
 let currentChannel = "all";
 let currentDateRange = "7";
 let currentSearch = "";
+let supabaseClient = null;
 
 const SUPABASE_URL = "https://tyjgxjawjqwerwemzkhy.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_afBHm3NGmsvCN7GUAKlNPw_-sAd5z26";
@@ -54,53 +55,128 @@ function showDashboardPage() {
   fetchEduFunnelData();
 }
 
+function createSupabaseClient() {
+  if (!window.supabase || !window.supabase.createClient) {
+    throw new Error("Supabase client belum dimuat.");
+  }
+
+  if (!supabaseClient) {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+
+  return supabaseClient;
+}
+
+function setButtonLoading(button, isLoading, loadingText) {
+  if (!button) return;
+
+  if (isLoading) {
+    button.dataset.defaultText = button.textContent;
+    button.textContent = loadingText;
+    button.disabled = true;
+    return;
+  }
+
+  button.textContent = button.dataset.defaultText || button.textContent;
+  button.disabled = false;
+}
+
+async function getCurrentSupabaseUser() {
+  const client = createSupabaseClient();
+  const { data, error } = await client.auth.getUser();
+
+  if (error) return null;
+
+  return data.user || null;
+}
+
 /* ================= AUTH ================= */
 goToLogin.addEventListener("click", showLoginPage);
 goToRegister.addEventListener("click", showRegisterPage);
 
-registerForm.addEventListener("submit", function (event) {
+registerForm.addEventListener("submit", async function (event) {
   event.preventDefault();
 
   const name = document.getElementById("registerName").value.trim();
   const email = document.getElementById("registerEmail").value.trim();
   const password = document.getElementById("registerPassword").value;
   const confirmPassword = document.getElementById("confirmPassword").value;
+  const submitButton = registerForm.querySelector("button[type='submit']");
 
   if (password !== confirmPassword) {
     alert("Password dan Confirm Password tidak sama.");
     return;
   }
 
-  localStorage.setItem("eduUserName", name);
-  localStorage.setItem("eduUserEmail", email);
-  localStorage.setItem("eduUserPassword", password);
+  try {
+    setButtonLoading(submitButton, true, "Creating...");
 
-  alert("Akun berhasil dibuat. Silakan login.");
-  showLoginPage();
+    const client = createSupabaseClient();
+    const { data, error } = await client.auth.signUp({
+      email: email,
+      password: password,
+      options: {
+        data: {
+          full_name: name
+        }
+      }
+    });
+
+    if (error) throw error;
+
+    registerForm.reset();
+
+    if (data.session) {
+      showDashboardPage();
+      return;
+    }
+
+    alert("Akun berhasil dibuat. Jika Supabase meminta verifikasi email, cek inbox sebelum login.");
+    showLoginPage();
+  } catch (error) {
+    console.error("Gagal membuat akun Supabase:", error);
+    alert(error.message || "Akun gagal dibuat.");
+  } finally {
+    setButtonLoading(submitButton, false);
+  }
 });
 
-loginForm.addEventListener("submit", function (event) {
+loginForm.addEventListener("submit", async function (event) {
   event.preventDefault();
 
   const email = document.getElementById("loginEmail").value.trim();
   const password = document.getElementById("loginPassword").value;
+  const submitButton = loginForm.querySelector("button[type='submit']");
 
-  const savedEmail = localStorage.getItem("eduUserEmail");
-  const savedPassword = localStorage.getItem("eduUserPassword");
+  try {
+    setButtonLoading(submitButton, true, "Signing in...");
 
-  const isRegisteredUser = email === savedEmail && password === savedPassword;
-  const isDemoUser = email === "admin@institution.edu" && password === "admin123";
+    const client = createSupabaseClient();
+    const { error } = await client.auth.signInWithPassword({
+      email: email,
+      password: password
+    });
 
-  if (isRegisteredUser || isDemoUser) {
-    localStorage.setItem("isLoggedIn", "true");
+    if (error) throw error;
+
+    loginForm.reset();
     showDashboardPage();
-  } else {
-    alert("Email atau password salah.");
+  } catch (error) {
+    console.error("Gagal login Supabase:", error);
+    alert("Email atau password salah, atau akun belum diverifikasi.");
+  } finally {
+    setButtonLoading(submitButton, false);
   }
 });
 
-logoutButton.addEventListener("click", function () {
-  localStorage.removeItem("isLoggedIn");
+logoutButton.addEventListener("click", async function () {
+  try {
+    const client = createSupabaseClient();
+    await client.auth.signOut();
+  } catch (error) {
+    console.error("Gagal logout Supabase:", error);
+  }
+
   showLoginPage();
 });
 
@@ -113,14 +189,6 @@ function getLocalEduFunnelData() {
 
 function validateEduFunnelData(data) {
   return data && Array.isArray(data.sources);
-}
-
-function createSupabaseClient() {
-  if (!window.supabase || !window.supabase.createClient) {
-    throw new Error("Supabase client belum dimuat.");
-  }
-
-  return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
 function mapSupabaseData(summaryRow, sourcesRows, trafficRows) {
@@ -974,10 +1042,17 @@ function downloadReport() {
 }
 
 /* ================= INIT ================= */
-window.addEventListener("load", function () {
-  if (localStorage.getItem("isLoggedIn") === "true") {
-    showDashboardPage();
-  } else {
-    showRegisterPage();
+window.addEventListener("load", async function () {
+  try {
+    const user = await getCurrentSupabaseUser();
+
+    if (user) {
+      showDashboardPage();
+      return;
+    }
+  } catch (error) {
+    console.error("Gagal mengecek session Supabase:", error);
   }
+
+  showRegisterPage();
 });
