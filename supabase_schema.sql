@@ -4,6 +4,7 @@
 begin;
 
 drop table if exists public.monthly_channel_traffic cascade;
+drop table if exists public.daily_channel_traffic cascade;
 drop table if exists public.funnel_sources cascade;
 drop table if exists public.summary_metrics cascade;
 
@@ -54,13 +55,28 @@ create table if not exists public.monthly_channel_traffic (
   unique (period, month_order)
 );
 
+create table if not exists public.daily_channel_traffic (
+  id bigint generated always as identity primary key,
+  date date not null,
+  channel text not null,
+  pengunjung integer not null,
+  daftar integer not null,
+  test integer not null,
+  daftar_ulang integer not null,
+  berkuliah integer not null,
+  created_at timestamptz not null default now(),
+  unique (date, channel)
+);
+
 alter table public.summary_metrics enable row level security;
 alter table public.funnel_sources enable row level security;
 alter table public.monthly_channel_traffic enable row level security;
+alter table public.daily_channel_traffic enable row level security;
 
 drop policy if exists "Allow public read summary metrics" on public.summary_metrics;
 drop policy if exists "Allow public read funnel sources" on public.funnel_sources;
 drop policy if exists "Allow public read monthly traffic" on public.monthly_channel_traffic;
+drop policy if exists "Allow public read daily traffic" on public.daily_channel_traffic;
 
 create policy "Allow public read summary metrics"
 on public.summary_metrics
@@ -80,6 +96,13 @@ for select
 to anon
 using (true);
 
+create policy "Allow public read daily traffic"
+on public.daily_channel_traffic
+for select
+to anon
+using (true);
+
+delete from public.daily_channel_traffic;
 delete from public.monthly_channel_traffic where period = '2025';
 delete from public.funnel_sources where period = '2025';
 delete from public.summary_metrics where period = '2025';
@@ -205,5 +228,43 @@ insert into public.monthly_channel_traffic (
 ('2025', 10, 'Oct', 24, 26, 15, 14),
 ('2025', 11, 'Nov', 15, 21, 21, 15),
 ('2025', 12, 'Dec', 28, 26, 16, 19);
+
+insert into public.daily_channel_traffic (
+  date,
+  channel,
+  pengunjung,
+  daftar,
+  test,
+  daftar_ulang,
+  berkuliah
+) values
+('2025-12-25', 'Google Ads', 1, 1, 1, 0, 0),
+('2025-12-25', 'Instagram', 1, 0, 0, 0, 0),
+('2025-12-25', 'Twitter/X', 1, 0, 0, 0, 0),
+('2025-12-25', 'Website', 0, 0, 0, 0, 0),
+('2025-12-26', 'Google Ads', 1, 1, 0, 0, 0),
+('2025-12-26', 'Instagram', 1, 1, 0, 0, 0),
+('2025-12-26', 'Twitter/X', 0, 0, 0, 0, 0),
+('2025-12-26', 'Website', 1, 0, 0, 0, 0),
+('2025-12-27', 'Google Ads', 1, 0, 0, 0, 0),
+('2025-12-27', 'Instagram', 1, 0, 0, 0, 0),
+('2025-12-27', 'Twitter/X', 1, 1, 1, 0, 0),
+('2025-12-27', 'Website', 0, 0, 0, 0, 0),
+('2025-12-28', 'Google Ads', 1, 1, 1, 1, 0),
+('2025-12-28', 'Instagram', 1, 1, 1, 1, 0),
+('2025-12-28', 'Twitter/X', 0, 0, 0, 0, 0),
+('2025-12-28', 'Website', 1, 0, 0, 0, 0),
+('2025-12-29', 'Google Ads', 1, 0, 0, 0, 0),
+('2025-12-29', 'Instagram', 1, 0, 0, 0, 0),
+('2025-12-29', 'Twitter/X', 1, 0, 0, 0, 0),
+('2025-12-29', 'Website', 0, 0, 0, 0, 0),
+('2025-12-30', 'Google Ads', 1, 1, 0, 0, 0),
+('2025-12-30', 'Instagram', 1, 1, 0, 0, 0),
+('2025-12-30', 'Twitter/X', 0, 0, 0, 0, 0),
+('2025-12-30', 'Website', 1, 1, 0, 0, 0),
+('2025-12-31', 'Google Ads', 1, 0, 0, 0, 0),
+('2025-12-31', 'Instagram', 0, 0, 0, 0, 0),
+('2025-12-31', 'Twitter/X', 1, 1, 0, 0, 0),
+('2025-12-31', 'Website', 1, 0, 0, 0, 0);
 
 commit;

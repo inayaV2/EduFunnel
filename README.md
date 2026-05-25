@@ -15,6 +15,7 @@ SQL tersebut akan membuat tabel:
 - `summary_metrics`
 - `funnel_sources`
 - `monthly_channel_traffic`
+- `daily_channel_traffic`
 
 SQL juga mengaktifkan Row Level Security dan membuat policy `select` untuk role `anon`, sehingga dashboard frontend bisa membaca data menggunakan publishable/anon key.
 
@@ -62,6 +63,13 @@ Data Supabase di-mapping kembali ke format lama agar UI dashboard tetap compatib
 - `funnel_data`
 - `sources`
 - `monthly_channel_traffic`
+- `daily_channel_traffic`
+
+Sumber data berdasarkan filter periode:
+
+- **Last 7 Days** memakai `daily_channel_traffic`.
+- **This Month** memakai `monthly_channel_traffic` bulan terakhir.
+- **This Year** memakai `summary_metrics` dan `funnel_sources`, dengan chart bulanan dari `monthly_channel_traffic`.
 
 Dengan mapping ini, fitur lama tetap berjalan:
 
