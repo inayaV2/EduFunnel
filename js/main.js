@@ -1023,6 +1023,70 @@ function renderFunnelBars(containerId, stages) {
 }
 
 /* ================= CHART ================= */
+function getSmoothChartOptions() {
+  return {
+    responsive: true,
+    animation: {
+      duration: 1200,
+      easing: "easeOutQuart"
+    },
+    transitions: {
+      active: {
+        animation: {
+          duration: 400
+        }
+      },
+      resize: {
+        animation: {
+          duration: 600
+        }
+      },
+      show: {
+        animations: {
+          x: {
+            from: 0,
+            duration: 900,
+            easing: "easeOutQuart"
+          },
+          y: {
+            from: 0,
+            duration: 900,
+            easing: "easeOutQuart"
+          }
+        }
+      },
+      hide: {
+        animation: {
+          duration: 300
+        }
+      }
+    },
+    hover: {
+      mode: "nearest",
+      intersect: true,
+      animationDuration: 250
+    },
+    plugins: {
+      legend: {
+        labels: {
+          color: "#cbd5e1"
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: { color: "#cbd5e1" },
+        grid: { color: "rgba(255,255,255,0.06)" }
+      },
+      y: {
+        beginAtZero: true,
+        ticks: { color: "#cbd5e1" },
+        grid: { color: "rgba(255,255,255,0.06)" }
+      }
+    }
+  };
+}
+
 function renderMonthlyChart() {
   if (typeof Chart === "undefined") {
     const chart = document.getElementById("monthlyChart");
@@ -1051,6 +1115,11 @@ function renderMonthlyChart() {
 
   const ctx = document.getElementById("monthlyChart").getContext("2d");
 
+  if (monthlyChart) {
+    monthlyChart.destroy();
+    monthlyChart = null;
+  }
+
   monthlyChart = new Chart(ctx, {
     type: "bar",
     data: {
@@ -1059,46 +1128,38 @@ function renderMonthlyChart() {
         {
           label: "Google Ads",
           data: googleAds,
-          backgroundColor: "rgba(79, 140, 255, 0.7)"
+          backgroundColor: "rgba(79, 140, 255, 0.7)",
+          hoverBackgroundColor: "rgba(79, 140, 255, 0.95)",
+          hoverBorderColor: "rgba(191, 219, 254, 0.95)",
+          hoverBorderWidth: 2
         },
         {
           label: "Instagram",
           data: instagram,
-          backgroundColor: "rgba(0, 212, 255, 0.7)"
+          backgroundColor: "rgba(0, 212, 255, 0.7)",
+          hoverBackgroundColor: "rgba(0, 212, 255, 0.95)",
+          hoverBorderColor: "rgba(207, 250, 254, 0.95)",
+          hoverBorderWidth: 2
         },
         {
           label: "Twitter/X",
           data: twitterX,
-          backgroundColor: "rgba(255, 99, 132, 0.7)"
+          backgroundColor: "rgba(255, 99, 132, 0.7)",
+          hoverBackgroundColor: "rgba(255, 99, 132, 0.95)",
+          hoverBorderColor: "rgba(255, 228, 230, 0.95)",
+          hoverBorderWidth: 2
         },
         {
           label: "Website",
           data: website,
-          backgroundColor: "rgba(34, 197, 94, 0.7)"
+          backgroundColor: "rgba(34, 197, 94, 0.7)",
+          hoverBackgroundColor: "rgba(34, 197, 94, 0.95)",
+          hoverBorderColor: "rgba(220, 252, 231, 0.95)",
+          hoverBorderWidth: 2
         }
       ]
     },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: {
-          labels: {
-            color: "#cbd5e1"
-          }
-        }
-      },
-      scales: {
-        x: {
-          ticks: { color: "#cbd5e1" },
-          grid: { color: "rgba(255,255,255,0.06)" }
-        },
-        y: {
-          beginAtZero: true,
-          ticks: { color: "#cbd5e1" },
-          grid: { color: "rgba(255,255,255,0.06)" }
-        }
-      }
-    }
+    options: getSmoothChartOptions()
   });
 }
 
