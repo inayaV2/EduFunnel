@@ -12,6 +12,9 @@
   <!-- Chart.js: direct dist path avoids the broken package-root source map URL. -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 
+  <!-- jsPDF -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+
   <!-- CSS -->
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -128,7 +131,10 @@
 
         <div class="header-actions">
           <div class="avatar" title="Profile">
-            <span>User</span>
+            <svg class="avatar-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 21a8 8 0 0 0-16 0" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
           </div>
         </div>
       </header>

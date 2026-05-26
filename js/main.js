@@ -683,6 +683,22 @@ function runDashboardAnimations() {
   animateProgressBars();
 }
 
+function getReportExportMarkup() {
+  return `
+    <div class="report-export">
+      <button class="auth-button report-btn" type="button" data-report-toggle>
+        Generate Detailed Report
+      </button>
+
+      <div class="export-menu" hidden>
+        <button type="button" data-export-type="pdf">Download PDF</button>
+        <button type="button" data-export-type="csv">Download Excel/CSV</button>
+        <button type="button" data-export-type="json">Download JSON</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderEmptyState() {
   app.innerHTML = `
     <section class="empty-state">
@@ -707,6 +723,7 @@ function renderPage(page) {
   if (page === "table") renderDataTable();
 
   runDashboardAnimations();
+  setupReportExport();
 }
 
 /* ================= HELPERS ================= */
@@ -832,9 +849,7 @@ function renderOverview() {
           with conversion rate ${bestSource.conversion_rate}%.
         </p>
 
-        <button class="auth-button report-btn" onclick="downloadReport()">
-          Generate Detailed Report
-        </button>
+        ${getReportExportMarkup()}
       </aside>
     </section>
   `;
@@ -938,6 +953,7 @@ function renderFunnelDepth() {
           <h3>Final Yield</h3>
           <div class="final-yield" data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="1">${getTotalConversionRate()}%</div>
           <p>Overall conversion from visitor to enrolled student.</p>
+          ${getReportExportMarkup()}
         </div>
       </aside>
     </section>
@@ -1214,32 +1230,266 @@ function renderMonthlyChart() {
 }
 
 /* ================= DOWNLOAD REPORT ================= */
-function downloadReport() {
+function getReportFileName(extension) {
+  const period = getDateRangeLabel().toLowerCase().replace(/\s+/g, "-");
+  const channel = (currentChannel === "all" ? "all-channels" : currentChannel)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return `edufunnel-report-${period}-${channel}.${extension}`;
+}
+
+function getCurrentReportData() {
   if (!appData) {
+    return null;
+  }
+
+  const summary = getFilteredSummary();
+  const funnelData = getSummaryStages();
+  const sources = getFilteredSources();
+  const highestDrop = getHighestDrop(funnelData);
+  const bestSource = sources.length > 0
+    ? [...sources].sort(function (a, b) {
+      return Number(b.conversion_rate) - Number(a.conversion_rate);
+    })[0]
+    : null;
+
+  return {
+    title: "EduFunnel Detailed Report",
+    metadata: appData.metadata || {},
+    selectedPeriod: getDateRangeLabel(),
+    selectedChannel: currentChannel === "all" ? "All Channels" : currentChannel,
+    selectedPeriodValue: currentDateRange,
+    summary: summary,
+    funnelData: funnelData,
+    sources: sources,
+    chartData: getChartDataByDateRange(),
+    highestDrop: highestDrop,
+    bestSource: bestSource,
+    generatedAt: new Date().toLocaleString("id-ID")
+  };
+}
+
+function downloadBlob(content, filename, type) {
+  const blob = new Blob([content], { type: type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  link.click();
+
+  URL.revokeObjectURL(url);
+}
+
+function downloadJSONReport() {
+  const reportData = getCurrentReportData();
+
+  if (!reportData) {
     alert("Data belum siap.");
     return;
   }
 
-  const reportData = {
-    title: "EduFunnel Detailed Report",
-    generated_at: new Date().toLocaleString("id-ID"),
-    selected_channel: currentChannel,
-    date_range: currentDateRange,
-    summary: getFilteredSummary(),
-    sources: getFilteredSources(),
-    monthly_channel_traffic: getChartDataByDateRange()
-  };
-
   const jsonData = JSON.stringify(reportData, null, 2);
-  const blob = new Blob([jsonData], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
+  downloadBlob(jsonData, getReportFileName("json"), "application/json");
+}
 
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "edufunnel-report.json";
-  link.click();
+function escapeCSVValue(value) {
+  const text = String(value ?? "");
 
-  URL.revokeObjectURL(url);
+  if (/[",\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  return text;
+}
+
+function addCSVRow(rows, values) {
+  rows.push(values.map(escapeCSVValue).join(","));
+}
+
+function downloadCSVReport() {
+  const reportData = getCurrentReportData();
+
+  if (!reportData) {
+    alert("Data belum siap.");
+    return;
+  }
+
+  const rows = [];
+
+  addCSVRow(rows, ["EduFunnel Detailed Report"]);
+  addCSVRow(rows, ["Generated At", reportData.generatedAt]);
+  addCSVRow(rows, ["Period", reportData.selectedPeriod]);
+  addCSVRow(rows, ["Channel", reportData.selectedChannel]);
+  rows.push("");
+
+  addCSVRow(rows, ["Summary"]);
+  addCSVRow(rows, ["Metric", "Value"]);
+  addCSVRow(rows, ["Total Visitors", reportData.summary.total_pengunjung]);
+  addCSVRow(rows, ["Qualified Leads", reportData.summary.total_daftar]);
+  addCSVRow(rows, ["Conversion Rate", `${getTotalConversionRate()}%`]);
+  rows.push("");
+
+  addCSVRow(rows, ["Funnel Data"]);
+  addCSVRow(rows, ["Stage", "Value"]);
+  reportData.funnelData.forEach(function (stage) {
+    addCSVRow(rows, [stage.label, stage.count]);
+  });
+  rows.push("");
+
+  addCSVRow(rows, ["Channel Data"]);
+  addCSVRow(rows, [
+    "Channel Source",
+    "Pengunjung",
+    "Daftar",
+    "Test",
+    "Daftar Ulang",
+    "Berkuliah",
+    "CVR",
+    "Status"
+  ]);
+
+  reportData.sources.forEach(function (source) {
+    addCSVRow(rows, [
+      source.name,
+      source.pengunjung,
+      source.daftar,
+      source.test,
+      source.daftar_ulang,
+      source.berkuliah,
+      `${source.conversion_rate}%`,
+      source.status
+    ]);
+  });
+
+  downloadBlob(rows.join("\n"), getReportFileName("csv"), "text/csv;charset=utf-8");
+}
+
+function addPDFLine(doc, label, value, x, y) {
+  doc.text(`${label}: ${value}`, x, y);
+}
+
+function downloadPDFReport() {
+  const reportData = getCurrentReportData();
+
+  if (!reportData) {
+    alert("Data belum siap.");
+    return;
+  }
+
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert("Library PDF belum siap. Coba refresh halaman.");
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const left = 14;
+  let y = 18;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text("EduFunnel Detailed Report", left, y);
+
+  y += 10;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  addPDFLine(doc, "Generated At", reportData.generatedAt, left, y);
+  y += 6;
+  addPDFLine(doc, "Period", reportData.selectedPeriod, left, y);
+  y += 6;
+  addPDFLine(doc, "Channel", reportData.selectedChannel, left, y);
+
+  y += 12;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("Summary Metrics", left, y);
+
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  addPDFLine(doc, "Total Visitors", reportData.summary.total_pengunjung.toLocaleString("id-ID"), left, y);
+  y += 6;
+  addPDFLine(doc, "Qualified Leads", reportData.summary.total_daftar.toLocaleString("id-ID"), left, y);
+  y += 6;
+  addPDFLine(doc, "Conversion Rate", `${getTotalConversionRate()}%`, left, y);
+
+  y += 12;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("Funnel Stages", left, y);
+
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  reportData.funnelData.forEach(function (stage) {
+    addPDFLine(doc, stage.label, stage.count.toLocaleString("id-ID"), left, y);
+    y += 6;
+  });
+
+  y += 6;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("Insights", left, y);
+
+  y += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  addPDFLine(doc, "Highest Drop-off", `${reportData.highestDrop.percent.toFixed(1)}% (${reportData.highestDrop.label})`, left, y);
+  y += 6;
+  addPDFLine(doc, "Users Lost", reportData.highestDrop.value.toLocaleString("id-ID"), left, y);
+  y += 6;
+  addPDFLine(
+    doc,
+    "Best Channel",
+    reportData.bestSource ? `${reportData.bestSource.name} (${reportData.bestSource.conversion_rate}%)` : "-",
+    left,
+    y
+  );
+
+  if (monthlyChart) {
+    try {
+      const chartImage = monthlyChart.toBase64Image();
+      y += 12;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text("Chart Snapshot", left, y);
+      y += 5;
+      doc.addImage(chartImage, "PNG", left, y, 180, 80);
+    } catch (error) {
+      console.warn("Chart image tidak bisa ditambahkan ke PDF:", error);
+    }
+  }
+
+  doc.save(getReportFileName("pdf"));
+}
+
+function setupReportExport() {
+  document.querySelectorAll("[data-report-toggle]").forEach(function (toggle) {
+    toggle.onclick = function () {
+      const exportMenu = toggle.closest(".report-export").querySelector(".export-menu");
+      exportMenu.hidden = !exportMenu.hidden;
+    };
+  });
+
+  document.querySelectorAll("[data-export-type]").forEach(function (button) {
+    button.onclick = function () {
+      const exportMenu = button.closest(".export-menu");
+      const exportType = button.dataset.exportType;
+
+      exportMenu.hidden = true;
+
+      if (exportType === "pdf") downloadPDFReport();
+      if (exportType === "csv") downloadCSVReport();
+      if (exportType === "json") downloadJSONReport();
+    };
+  });
+}
+
+function downloadReport() {
+  downloadJSONReport();
 }
 
 /* ================= INIT ================= */
