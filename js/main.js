@@ -4,7 +4,6 @@ let monthlyChart = null;
 let currentPage = "overview";
 let currentChannel = "all";
 let currentDateRange = "7";
-let currentSearch = "";
 let supabaseClient = null;
 
 const SUPABASE_URL = "https://tyjgxjawjqwerwemzkhy.supabase.co";
@@ -30,7 +29,6 @@ const goToLogin = document.getElementById("goToLogin");
 const goToRegister = document.getElementById("goToRegister");
 const logoutButton = document.getElementById("logoutButton");
 
-const searchInput = document.getElementById("searchInput");
 const channelFilter = document.getElementById("channelFilter");
 const dateFilter = document.getElementById("dateFilter");
 
@@ -345,7 +343,6 @@ async function fetchEduFunnelData() {
     appData = await fetchSupabaseData();
 
     setupNavigation();
-    setupSearch();
     setupFilters();
 
     renderPage("overview");
@@ -368,7 +365,6 @@ async function fetchEduFunnelData() {
 
       appData = fallbackData;
       setupNavigation();
-      setupSearch();
       setupFilters();
       renderPage("overview");
       return;
@@ -409,16 +405,7 @@ function setActiveMenu(page) {
   });
 }
 
-/* ================= SEARCH & FILTER ================= */
-function setupSearch() {
-  if (!searchInput) return;
-
-  searchInput.oninput = function () {
-    currentSearch = searchInput.value.toLowerCase().trim();
-    renderPage(currentPage);
-  };
-}
-
+/* ================= FILTER ================= */
 function setupFilters() {
   if (channelFilter) {
     channelFilter.onchange = function () {
@@ -592,12 +579,6 @@ function getFilteredSources() {
     });
   }
 
-  if (currentSearch !== "") {
-    sources = sources.filter(function (source) {
-      return source.name.toLowerCase().includes(currentSearch);
-    });
-  }
-
   return sources;
 }
 
@@ -635,6 +616,73 @@ function getChannelTrafficTitle() {
   return "Last 7 Days Channel Traffic";
 }
 
+function formatAnimatedNumber(value, format, decimals) {
+  if (format === "percent") {
+    return `${Number(value).toFixed(decimals)}%`;
+  }
+
+  if (format === "decimal") {
+    return Number(value).toFixed(decimals);
+  }
+
+  return Math.round(Number(value)).toLocaleString("id-ID");
+}
+
+function animateNumber(element, targetValue, options = {}) {
+  const duration = options.duration || 900;
+  const format = options.format || "int";
+  const decimals = Number(options.decimals || 0);
+  const target = Number(targetValue);
+  const startTime = performance.now();
+
+  if (!Number.isFinite(target)) return;
+
+  function updateFrame(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const easedProgress = 1 - Math.pow(1 - progress, 4);
+    const currentValue = target * easedProgress;
+
+    element.textContent = formatAnimatedNumber(currentValue, format, decimals);
+
+    if (progress < 1) {
+      requestAnimationFrame(updateFrame);
+    } else {
+      element.textContent = formatAnimatedNumber(target, format, decimals);
+    }
+  }
+
+  element.textContent = formatAnimatedNumber(0, format, decimals);
+  requestAnimationFrame(updateFrame);
+}
+
+function animateCountUps() {
+  document.querySelectorAll("[data-count-up]").forEach(function (element) {
+    animateNumber(element, element.dataset.value, {
+      format: element.dataset.format || "int",
+      decimals: element.dataset.decimals || 0,
+      duration: 900
+    });
+  });
+}
+
+function animateProgressBars() {
+  document.querySelectorAll(".bar-fill[data-width]").forEach(function (bar) {
+    bar.style.width = "0%";
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        bar.style.width = `${bar.dataset.width}%`;
+      });
+    });
+  });
+}
+
+function runDashboardAnimations() {
+  animateCountUps();
+  animateProgressBars();
+}
+
 function renderEmptyState() {
   app.innerHTML = `
     <section class="empty-state">
@@ -657,6 +705,8 @@ function renderPage(page) {
   if (page === "channel") renderChannelAnalysis();
   if (page === "funnel") renderFunnelDepth();
   if (page === "table") renderDataTable();
+
+  runDashboardAnimations();
 }
 
 /* ================= HELPERS ================= */
@@ -737,17 +787,17 @@ function renderOverview() {
     <section class="summary">
       <div class="summary-card">
         <h3>Total Visitors</h3>
-        <p>${summary.total_pengunjung.toLocaleString("id-ID")}</p>
+        <p data-count-up data-value="${summary.total_pengunjung}">${summary.total_pengunjung.toLocaleString("id-ID")}</p>
       </div>
 
       <div class="summary-card">
         <h3>Qualified Leads</h3>
-        <p>${summary.total_daftar.toLocaleString("id-ID")}</p>
+        <p data-count-up data-value="${summary.total_daftar}">${summary.total_daftar.toLocaleString("id-ID")}</p>
       </div>
 
       <div class="summary-card">
         <h3>Conversion Rate</h3>
-        <p>${getTotalConversionRate()}%</p>
+        <p data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="1">${getTotalConversionRate()}%</p>
       </div>
     </section>
 
@@ -766,12 +816,12 @@ function renderOverview() {
       <aside class="card insight-card">
         <h2>Key Insight</h2>
 
-        <div class="insight-value">${highestDrop.percent.toFixed(1)}%</div>
+        <div class="insight-value" data-count-up data-value="${highestDrop.percent.toFixed(1)}" data-format="percent" data-decimals="1">${highestDrop.percent.toFixed(1)}%</div>
 
         <p>
           Significant drop-off detected between
           <strong>${highestDrop.label}</strong>.
-          Total users lost: ${highestDrop.value.toLocaleString("id-ID")}.
+          Total users lost: <span data-count-up data-value="${highestDrop.value}">${highestDrop.value.toLocaleString("id-ID")}</span>.
         </p>
 
         <hr />
@@ -812,17 +862,17 @@ function renderChannelAnalysis() {
         </div>
 
         <p class="label">Visitors</p>
-        <h3>${Number(source.pengunjung).toLocaleString("id-ID")}</h3>
+        <h3 data-count-up data-value="${Number(source.pengunjung)}">${Number(source.pengunjung).toLocaleString("id-ID")}</h3>
 
         <div class="channel-stats">
           <div>
             <span>Converted</span>
-            <strong>${source.berkuliah}</strong>
+            <strong data-count-up data-value="${Number(source.berkuliah)}">${source.berkuliah}</strong>
           </div>
 
           <div>
             <span>Conv. Rate</span>
-            <strong>${source.conversion_rate}%</strong>
+            <strong data-count-up data-value="${Number(source.conversion_rate)}" data-format="percent" data-decimals="2">${source.conversion_rate}%</strong>
           </div>
         </div>
       </div>
@@ -886,7 +936,7 @@ function renderFunnelDepth() {
 
         <div class="card">
           <h3>Final Yield</h3>
-          <div class="final-yield">${getTotalConversionRate()}%</div>
+          <div class="final-yield" data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="1">${getTotalConversionRate()}%</div>
           <p>Overall conversion from visitor to enrolled student.</p>
         </div>
       </aside>
@@ -911,12 +961,12 @@ function renderDataTable() {
     return `
       <tr>   
         <td>${source.name}</td>
-        <td>${Number(source.pengunjung).toLocaleString("id-ID")}</td>
-        <td>${Number(source.daftar).toLocaleString("id-ID")}</td>
-        <td>${Number(source.test).toLocaleString("id-ID")}</td>
-        <td>${Number(source.daftar_ulang).toLocaleString("id-ID")}</td>
-        <td>${Number(source.berkuliah).toLocaleString("id-ID")}</td>
-        <td>${source.conversion_rate}%</td>
+        <td data-count-up data-value="${Number(source.pengunjung)}">${Number(source.pengunjung).toLocaleString("id-ID")}</td>
+        <td data-count-up data-value="${Number(source.daftar)}">${Number(source.daftar).toLocaleString("id-ID")}</td>
+        <td data-count-up data-value="${Number(source.test)}">${Number(source.test).toLocaleString("id-ID")}</td>
+        <td data-count-up data-value="${Number(source.daftar_ulang)}">${Number(source.daftar_ulang).toLocaleString("id-ID")}</td>
+        <td data-count-up data-value="${Number(source.berkuliah)}">${Number(source.berkuliah).toLocaleString("id-ID")}</td>
+        <td data-count-up data-value="${Number(source.conversion_rate)}" data-format="percent" data-decimals="2">${source.conversion_rate}%</td>
         <td>${source.status}</td>
       </tr>
     `;
@@ -932,17 +982,17 @@ function renderDataTable() {
     <section class="summary">
       <div class="summary-card">
         <h3>Total Visitors</h3>
-        <p>${summary.total_pengunjung.toLocaleString("id-ID")}</p>
+        <p data-count-up data-value="${summary.total_pengunjung}">${summary.total_pengunjung.toLocaleString("id-ID")}</p>
       </div>
 
       <div class="summary-card">
         <h3>Average CVR</h3>
-        <p>${getTotalConversionRate()}%</p>
+        <p data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="1">${getTotalConversionRate()}%</p>
       </div>
 
       <div class="summary-card">
         <h3>Active Channels</h3>
-        <p>${filteredSources.length}</p>
+        <p data-count-up data-value="${filteredSources.length}">${filteredSources.length}</p>
       </div>
     </section>
 
@@ -966,12 +1016,12 @@ function renderDataTable() {
 
           <tr class="total-row">
             <td>TOTAL</td>
-            <td>${summary.total_pengunjung.toLocaleString("id-ID")}</td>
-            <td>${summary.total_daftar.toLocaleString("id-ID")}</td>
-            <td>${summary.total_test.toLocaleString("id-ID")}</td>
-            <td>${summary.total_daftar_ulang.toLocaleString("id-ID")}</td>
-            <td>${summary.total_berkuliah.toLocaleString("id-ID")}</td>
-            <td>${getTotalConversionRate()}%</td>
+            <td data-count-up data-value="${summary.total_pengunjung}">${summary.total_pengunjung.toLocaleString("id-ID")}</td>
+            <td data-count-up data-value="${summary.total_daftar}">${summary.total_daftar.toLocaleString("id-ID")}</td>
+            <td data-count-up data-value="${summary.total_test}">${summary.total_test.toLocaleString("id-ID")}</td>
+            <td data-count-up data-value="${summary.total_daftar_ulang}">${summary.total_daftar_ulang.toLocaleString("id-ID")}</td>
+            <td data-count-up data-value="${summary.total_berkuliah}">${summary.total_berkuliah.toLocaleString("id-ID")}</td>
+            <td data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="1">${getTotalConversionRate()}%</td>
             <td>Overall</td>
           </tr>
         </tbody>
@@ -1009,11 +1059,11 @@ function renderFunnelBars(containerId, stages) {
       <div class="funnel-stage">
         <div class="stage-label">
           <strong>${stage.label}</strong>
-          <span>${stage.count.toLocaleString("id-ID")}</span>
+          <span data-count-up data-value="${stage.count}">${stage.count.toLocaleString("id-ID")}</span>
         </div>
 
         <div class="bar-bg">
-          <div class="bar-fill" style="width: ${width}%"></div>
+          <div class="bar-fill" data-width="${width}" style="width: 0%"></div>
         </div>
 
         ${dropText}
@@ -1175,7 +1225,6 @@ function downloadReport() {
     generated_at: new Date().toLocaleString("id-ID"),
     selected_channel: currentChannel,
     date_range: currentDateRange,
-    search_keyword: currentSearch,
     summary: getFilteredSummary(),
     sources: getFilteredSources(),
     monthly_channel_traffic: getChartDataByDateRange()

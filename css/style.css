@@ -242,27 +242,6 @@ body {
   backdrop-filter: blur(14px);
 }
 
-.search-box {
-  width: 320px;
-  max-width: 320px;
-}
-
-.search-box input {
-  width: 100%;
-  height: 34px;
-  border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.09);
-  background: rgba(255,255,255,0.055);
-  color: #fff;
-  padding: 0 16px;
-  outline: none;
-  font-size: 12px;
-}
-
-.search-box input::placeholder {
-  color: #7f8ba3;
-}
-
 .avatar {
   width: 34px;
   height: 34px;
@@ -394,6 +373,7 @@ body {
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, #7c6cff, #20c7e8);
+  transition: width 900ms ease-out;
 }
 
 .drop {
@@ -552,10 +532,6 @@ canvas {
     font-size: 32px;
   }
 
-  .search-box {
-    width: 100%;
-    max-width: 100%;
-  }
 }
 /* FILTER, HOVER, LOADING, EMPTY STATE */
 .filter-group {
