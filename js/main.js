@@ -358,6 +358,7 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
     }),
     monthly_channel_traffic: safeTrafficRows.map(function (item) {
       return {
+        month_order: Number(item.month_order || 0),
         month: item.month || "",
         google_ads: Number(item.google_ads || 0),
         instagram: Number(item.instagram || 0),
@@ -656,6 +657,28 @@ function getMonthlyChannelTraffic() {
   ];
 }
 
+function getLatestMonthlyTraffic() {
+  const monthlyData = getMonthlyChannelTraffic();
+
+  if (monthlyData.length === 0) {
+    return null;
+  }
+
+  const hasMonthOrder = monthlyData.some(function (item) {
+    return Number(item.month_order || 0) > 0;
+  });
+
+  if (!hasMonthOrder) {
+    return monthlyData[monthlyData.length - 1];
+  }
+
+  return monthlyData.reduce(function (latest, item) {
+    return Number(item.month_order || 0) > Number(latest.month_order || 0)
+      ? item
+      : latest;
+  }, monthlyData[0]);
+}
+
 function getDailyChannelTraffic() {
   return Array.isArray(appData.daily_channel_traffic)
     ? appData.daily_channel_traffic
@@ -881,7 +904,7 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
 
 function getChartDataByDateRange() {
   const monthlyData = getMonthlyChannelTraffic();
-  const latestMonth = monthlyData[monthlyData.length - 1];
+  const latestMonth = getLatestMonthlyTraffic();
   const dailySources = getAggregatedDailyData(currentDateRange, "all").sources;
   const dailyVisitors = dailySources.reduce(function (totals, source) {
     totals[source.name] = Number(source.pengunjung);
@@ -974,6 +997,41 @@ function getDateRangeSources() {
 /* ================= FILTERED DATA ================= */
 function getFilteredSources() {
   return getDateRangeSources();
+}
+
+function getChannelAnalysisSources() {
+  if (currentDateRange !== "month" && currentDateRange !== "30") {
+    return getFilteredSources();
+  }
+
+  const latestMonth = getLatestMonthlyTraffic();
+
+  if (!latestMonth) {
+    return getFilteredSources();
+  }
+
+  return Object.entries(CHANNEL_TRAFFIC_KEYS)
+    .filter(function ([channelName]) {
+      return currentChannel === "all" || channelName === currentChannel;
+    })
+    .map(function ([channelName, trafficKey], index) {
+      const visitors = Number(latestMonth[trafficKey] || 0);
+
+      return {
+        name: channelName,
+        pengunjung: visitors,
+        daftar: 0,
+        test: 0,
+        daftar_ulang: 0,
+        berkuliah: 0,
+        conversion_rate: "0.00",
+        drop_off: visitors > 0 ? 100 : 0,
+        progression_rates: {},
+        attrition_rates: {},
+        ranking: index + 1,
+        status: visitors > 0 ? "Stable" : "No Data"
+      };
+    });
 }
 
 function getFilteredSummary() {
@@ -1235,7 +1293,7 @@ function renderOverview() {
 
 /* ================= CHANNEL ANALYSIS ================= */
 function renderChannelAnalysis() {
-  const filteredSources = getFilteredSources();
+  const filteredSources = getChannelAnalysisSources();
 
   if (filteredSources.length === 0) {
     renderEmptyState();
