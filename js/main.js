@@ -363,7 +363,11 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
         google_ads: Number(item.google_ads || 0),
         instagram: Number(item.instagram || 0),
         twitter_x: Number(item.twitter_x || 0),
-        website: Number(item.website || 0)
+        website: Number(item.website || 0),
+        daftar: Number(item.daftar || 0),
+        test: Number(item.test || 0),
+        daftar_ulang: Number(item.daftar_ulang || 0),
+        berkuliah: Number(item.berkuliah || 0)
       };
     }),
     daily_channel_traffic: safeDailyRows.map(function (item) {
@@ -1023,22 +1027,54 @@ function getMonthlyMetricSources(channel) {
     return [];
   }
 
-  return Object.entries(CHANNEL_TRAFFIC_KEYS)
+  const channelEntries = Object.entries(CHANNEL_TRAFFIC_KEYS)
     .filter(function ([channelName]) {
       return channel === "all" || channelName === channel;
-    })
-    .map(function ([channelName, trafficKey], index) {
+    });
+  const totalVisitors = channelEntries.reduce(function (total, [, trafficKey]) {
+    return total + Number(latestMonth[trafficKey] || 0);
+  }, 0);
+
+  function allocateMonthlyStage(totalValue, visitors, index) {
+    if (channel !== "all") {
+      return Number(totalValue || 0);
+    }
+
+    if (totalVisitors === 0) {
+      return 0;
+    }
+
+    if (index === channelEntries.length - 1) {
+      const allocatedBefore = channelEntries
+        .slice(0, index)
+        .reduce(function (total, [, previousTrafficKey]) {
+          const previousVisitors = Number(latestMonth[previousTrafficKey] || 0);
+          return total + Math.floor((Number(totalValue || 0) * previousVisitors) / totalVisitors);
+        }, 0);
+
+      return Number(totalValue || 0) - allocatedBefore;
+    }
+
+    return Math.floor((Number(totalValue || 0) * visitors) / totalVisitors);
+  }
+
+  return channelEntries.map(function ([channelName, trafficKey], index) {
       const visitors = Number(latestMonth[trafficKey] || 0);
+      const daftar = allocateMonthlyStage(latestMonth.daftar, visitors, index);
+      const test = allocateMonthlyStage(latestMonth.test, visitors, index);
+      const daftarUlang = allocateMonthlyStage(latestMonth.daftar_ulang, visitors, index);
+      const enrolled = allocateMonthlyStage(latestMonth.berkuliah, visitors, index);
+      const conversionRate = visitors === 0 ? 0 : (enrolled / visitors) * 100;
 
       return {
         name: channelName,
         pengunjung: visitors,
-        daftar: 0,
-        test: 0,
-        daftar_ulang: 0,
-        berkuliah: 0,
-        conversion_rate: "0.00",
-        drop_off: visitors > 0 ? 100 : 0,
+        daftar: daftar,
+        test: test,
+        daftar_ulang: daftarUlang,
+        berkuliah: enrolled,
+        conversion_rate: Number(formatConversionRate(conversionRate)),
+        drop_off: visitors > 0 ? Number(formatConversionRate(100 - conversionRate)) : 0,
         progression_rates: {},
         attrition_rates: {},
         ranking: index + 1,
@@ -1050,13 +1086,17 @@ function getMonthlyMetricSources(channel) {
 function getFilteredMetrics(channel = currentChannel, dateRange = currentDateRange) {
   if (dateRange === "month" || dateRange === "30") {
     const monthlySources = getMonthlyMetricSources(channel);
+    const monthlySummary = summarizeMetricSources(monthlySources);
+    const monthlyConversionRate = monthlySummary.total_pengunjung === 0
+      ? 0
+      : (monthlySummary.total_berkuliah / monthlySummary.total_pengunjung) * 100;
 
     return {
       range: "month",
       channel: channel,
       sources: monthlySources,
-      summary: summarizeMetricSources(monthlySources),
-      conversion_rate: 0,
+      summary: monthlySummary,
+      conversion_rate: Number(formatConversionRate(monthlyConversionRate)),
       source: "monthly_channel_traffic"
     };
   }
