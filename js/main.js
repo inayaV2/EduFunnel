@@ -913,8 +913,62 @@ function getChartDataByDateRange() {
   return [];
 }
 
+function getAggregatedYearlyData(channel = currentChannel) {
+  const yearlySources = (Array.isArray(appData.sources) ? appData.sources : [])
+    .filter(function (source) {
+      return channel === "all" || source.name === channel;
+    })
+    .map(function (source) {
+      const visitors = Number(source.pengunjung || 0);
+      const enrolled = Number(source.berkuliah || 0);
+      const conversionRate = visitors === 0 ? 0 : (enrolled / visitors) * 100;
+
+      return {
+        ...source,
+        pengunjung: visitors,
+        daftar: Number(source.daftar || 0),
+        test: Number(source.test || 0),
+        daftar_ulang: Number(source.daftar_ulang || 0),
+        berkuliah: enrolled,
+        conversion_rate: conversionRate.toFixed(2),
+        drop_off: Number((100 - conversionRate).toFixed(2))
+      };
+    });
+  const summary = yearlySources.reduce(function (totals, source) {
+    totals.total_pengunjung += Number(source.pengunjung);
+    totals.total_daftar += Number(source.daftar);
+    totals.total_test += Number(source.test);
+    totals.total_daftar_ulang += Number(source.daftar_ulang);
+    totals.total_berkuliah += Number(source.berkuliah);
+
+    return totals;
+  }, {
+    total_pengunjung: 0,
+    total_daftar: 0,
+    total_test: 0,
+    total_daftar_ulang: 0,
+    total_berkuliah: 0
+  });
+
+  return {
+    range: "year",
+    channel: channel,
+    sources: yearlySources,
+    summary: summary,
+    source: "funnel_sources"
+  };
+}
+
+function getCurrentAggregatedData() {
+  if (currentDateRange === "year") {
+    return getAggregatedYearlyData(currentChannel);
+  }
+
+  return getAggregatedDailyData(currentDateRange, currentChannel);
+}
+
 function getDateRangeSources() {
-  return getAggregatedDailyData(currentDateRange, currentChannel).sources;
+  return getCurrentAggregatedData().sources;
 }
 
 /* ================= FILTERED DATA ================= */
@@ -923,7 +977,7 @@ function getFilteredSources() {
 }
 
 function getFilteredSummary() {
-  return getAggregatedDailyData(currentDateRange, currentChannel).summary;
+  return getCurrentAggregatedData().summary;
 }
 
 function getDateRangeLabel() {
