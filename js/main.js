@@ -5,6 +5,7 @@ let currentPage = "overview";
 let currentChannel = "all";
 let currentDateRange = "7";
 let supabaseClient = null;
+let supabaseDataClient = null;
 let activeDataSource = "none";
 
 const SUPABASE_URL = "https://tyjgxjawjqwerwemzkhy.supabase.co";
@@ -73,6 +74,33 @@ function createSupabaseClient() {
   }
 
   return supabaseClient;
+}
+
+function createSupabaseDataClient() {
+  if (!window.supabase || !window.supabase.createClient) {
+    throw new Error("Supabase client belum dimuat.");
+  }
+
+  if (!supabaseDataClient) {
+    supabaseDataClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storageKey: "edufunnel-anon-data-client"
+      },
+      global: {
+        fetch: function (url, options = {}) {
+          return fetch(url, {
+            ...options,
+            cache: "no-store"
+          });
+        }
+      }
+    });
+  }
+
+  return supabaseDataClient;
 }
 
 function setButtonLoading(button, isLoading, loadingText) {
@@ -351,7 +379,7 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
 }
 
 async function fetchSupabaseData() {
-  const client = createSupabaseClient();
+  const client = createSupabaseDataClient();
 
   async function fetchSummaryMetrics() {
     let result = await client
@@ -467,13 +495,17 @@ async function fetchSupabaseData() {
     throw new Error("Semua query tabel Supabase gagal.");
   }
 
-  console.log("daily_channel_traffic", dailyResult.error ? [] : dailyResult.data);
+  const dailyRows = dailyResult.error || !Array.isArray(dailyResult.data)
+    ? []
+    : dailyResult.data;
+
+  console.log("RAW daily_channel_traffic:", dailyRows);
 
   const mappedData = mapSupabaseData(
     summaryResult.error ? null : summaryResult.data,
     sourcesResult.error ? [] : sourcesResult.data,
     trafficResult.error ? [] : trafficResult.data,
-    dailyResult.error ? [] : dailyResult.data
+    dailyRows
   );
 
   if (!dailyResult.error) {
@@ -624,31 +656,9 @@ function getMonthlyChannelTraffic() {
 }
 
 function getDailyChannelTraffic() {
-  const dailyRows = Array.isArray(appData.daily_channel_traffic)
+  return Array.isArray(appData.daily_channel_traffic)
     ? appData.daily_channel_traffic
     : [];
-
-  const latestDates = [...new Set(
-    dailyRows
-      .map(function (item) {
-        return item.date;
-      })
-      .filter(Boolean)
-  )]
-    .sort(function (dateA, dateB) {
-      return new Date(dateB).getTime() - new Date(dateA).getTime();
-    })
-    .slice(0, 7);
-
-  const latestDateSet = new Set(latestDates);
-
-  return dailyRows
-    .filter(function (item) {
-      return latestDateSet.has(item.date);
-    })
-    .sort(function (itemA, itemB) {
-      return new Date(itemA.date).getTime() - new Date(itemB.date).getTime();
-    });
 }
 
 function getDailyChannelSummary() {
@@ -680,27 +690,28 @@ function getDailyChannelSummary() {
 function getChartDataByDateRange() {
   const monthlyData = getMonthlyChannelTraffic();
   const latestMonth = monthlyData[monthlyData.length - 1];
+  const dailySummary = getDailyChannelSummary();
+  const dailyChartData = [
+    {
+      month: "Daily Traffic",
+      google_ads: Number(dailySummary["Google Ads"]?.pengunjung || 0),
+      instagram: Number(dailySummary.Instagram?.pengunjung || 0),
+      twitter_x: Number(dailySummary["Twitter/X"]?.pengunjung || 0),
+      website: Number(dailySummary.Website?.pengunjung || 0)
+    }
+  ];
 
   if (currentDateRange === "7") {
-    const dailySummary = getDailyChannelSummary();
-
-    return [
-      {
-        month: "Last 7 Days",
-        google_ads: Number(dailySummary["Google Ads"]?.pengunjung || 0),
-        instagram: Number(dailySummary.Instagram?.pengunjung || 0),
-        twitter_x: Number(dailySummary["Twitter/X"]?.pengunjung || 0),
-        website: Number(dailySummary.Website?.pengunjung || 0)
-      }
-    ];
+    dailyChartData[0].month = "Last 7 Days";
+    return dailyChartData;
   }
 
   if (currentDateRange === "month") {
-    return latestMonth ? [latestMonth] : [];
+    return latestMonth ? [latestMonth] : dailyChartData;
   }
 
   if (currentDateRange === "year") {
-    return monthlyData;
+    return monthlyData.length > 0 ? monthlyData : dailyChartData;
   }
 
   return [];
@@ -760,24 +771,47 @@ function buildSourceFromDailyData(source, dailySummary) {
 }
 
 function getDateRangeSources() {
-  if (currentDateRange === "7") {
-    const dailySummary = getDailyChannelSummary();
+  const dailySummary = getDailyChannelSummary();
+  const dailySources = appData.sources.map(function (source) {
+    return buildSourceFromDailyData(source, dailySummary);
+  });
+  const hasDailyData = dailySources.some(function (source) {
+    return Number(source.pengunjung) > 0
+      || Number(source.daftar) > 0
+      || Number(source.test) > 0
+      || Number(source.daftar_ulang) > 0
+      || Number(source.berkuliah) > 0;
+  });
+  const hasYearlyData = appData.sources.some(function (source) {
+    return Number(source.pengunjung) > 0
+      || Number(source.daftar) > 0
+      || Number(source.test) > 0
+      || Number(source.daftar_ulang) > 0
+      || Number(source.berkuliah) > 0;
+  });
 
-    return appData.sources.map(function (source) {
-      return buildSourceFromDailyData(source, dailySummary);
-    });
+  if (currentDateRange === "7") {
+    return dailySources;
   }
 
   if (currentDateRange === "year") {
-    return appData.sources;
+    return hasYearlyData ? appData.sources : dailySources;
   }
 
   const visitorsByChannel = getVisitorsByChannel();
-
-  return appData.sources.map(function (source) {
+  const monthlySources = appData.sources.map(function (source) {
     const visitors = Number(visitorsByChannel[source.name] || 0);
     return buildSourceForVisitors(source, visitors);
   });
+  const hasMonthlyData = monthlySources.some(function (source) {
+    return Number(source.pengunjung) > 0;
+  });
+
+  if ((!hasMonthlyData || !hasYearlyData) && hasDailyData) {
+    return dailySources;
+  }
+
+  return monthlySources;
 }
 
 /* ================= FILTERED DATA ================= */
