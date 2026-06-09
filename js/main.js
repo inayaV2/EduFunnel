@@ -353,40 +353,132 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
 async function fetchSupabaseData() {
   const client = createSupabaseClient();
 
-  const [summaryResult, sourcesResult, trafficResult, dailyResult] = await Promise.all([
-    client
+  async function fetchSummaryMetrics() {
+    let result = await client
       .from("summary_metrics")
       .select("*")
       .eq("period", "2025")
-      .maybeSingle(),
-    client
+      .maybeSingle();
+
+    if (result.error) {
+      console.warn(
+        "Supabase: summary_metrics dengan filter period gagal. Mencoba ulang tanpa filter.",
+        result.error
+      );
+
+      result = await client
+        .from("summary_metrics")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+    }
+
+    return result;
+  }
+
+  async function fetchFunnelSources() {
+    let result = await client
       .from("funnel_sources")
       .select("*")
       .eq("period", "2025")
-      .order("id", { ascending: true }),
-    client
+      .order("id", { ascending: true });
+
+    if (result.error) {
+      console.warn(
+        "Supabase: funnel_sources dengan filter period gagal. Mencoba ulang tanpa filter.",
+        result.error
+      );
+
+      result = await client
+        .from("funnel_sources")
+        .select("*");
+    }
+
+    if (Array.isArray(result.data)) {
+      result.data.sort(function (sourceA, sourceB) {
+        return Number(sourceA.id || 0) - Number(sourceB.id || 0);
+      });
+    }
+
+    return result;
+  }
+
+  async function fetchMonthlyTraffic() {
+    let result = await client
       .from("monthly_channel_traffic")
       .select("*")
       .eq("period", "2025")
-      .order("month_order", { ascending: true }),
-    client
+      .order("month_order", { ascending: true });
+
+    if (result.error) {
+      console.warn(
+        "Supabase: monthly_channel_traffic dengan filter period gagal. Mencoba ulang tanpa filter.",
+        result.error
+      );
+
+      result = await client
+        .from("monthly_channel_traffic")
+        .select("*");
+    }
+
+    if (Array.isArray(result.data)) {
+      result.data.sort(function (monthA, monthB) {
+        return Number(monthA.month_order || 0) - Number(monthB.month_order || 0);
+      });
+    }
+
+    return result;
+  }
+
+  async function fetchDailyTraffic() {
+    return client
       .from("daily_channel_traffic")
-      .select("*")
+      .select("*");
+  }
+
+  const [summaryResult, sourcesResult, trafficResult, dailyResult] = await Promise.all([
+    fetchSummaryMetrics(),
+    fetchFunnelSources(),
+    fetchMonthlyTraffic(),
+    fetchDailyTraffic()
   ]);
 
-  if (summaryResult.error) throw summaryResult.error;
-  if (sourcesResult.error) throw sourcesResult.error;
-  if (trafficResult.error) throw trafficResult.error;
-  if (dailyResult.error) throw dailyResult.error;
+  const queryResults = [
+    { name: "summary_metrics", result: summaryResult },
+    { name: "funnel_sources", result: sourcesResult },
+    { name: "monthly_channel_traffic", result: trafficResult },
+    { name: "daily_channel_traffic", result: dailyResult }
+  ];
 
-  console.log("daily_channel_traffic", dailyResult.data);
+  queryResults.forEach(function (query) {
+    if (query.result.error) {
+      console.warn(
+        `Supabase: ${query.name} tidak dapat dibaca. Dashboard tetap memakai tabel Supabase lain yang tersedia.`,
+        query.result.error
+      );
+    }
+  });
+
+  const successfulQueries = queryResults.filter(function (query) {
+    return !query.result.error;
+  });
+
+  if (successfulQueries.length === 0) {
+    throw new Error("Semua query tabel Supabase gagal.");
+  }
+
+  console.log("daily_channel_traffic", dailyResult.error ? [] : dailyResult.data);
 
   const mappedData = mapSupabaseData(
-    summaryResult.data,
-    sourcesResult.data,
-    trafficResult.data,
-    dailyResult.data
+    summaryResult.error ? null : summaryResult.data,
+    sourcesResult.error ? [] : sourcesResult.data,
+    trafficResult.error ? [] : trafficResult.data,
+    dailyResult.error ? [] : dailyResult.data
   );
+
+  if (!dailyResult.error) {
+    activeDataSource = "SUPABASE";
+  }
 
   console.log("DATA SUPABASE", mappedData);
 
@@ -421,7 +513,7 @@ async function fetchEduFunnelData() {
     `;
 
     appData = await fetchSupabaseData();
-    activeDataSource = "supabase";
+    activeDataSource = "SUPABASE";
     console.info("EduFunnel data source: SUPABASE");
 
     setupNavigation();
