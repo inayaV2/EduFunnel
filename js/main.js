@@ -1066,9 +1066,15 @@ function getAggregatedMonthlyData(channel = currentChannel) {
       return getMonthlyChannelStageValue(latestMonth, trafficKey, stage) !== null;
     });
   });
+  const allPerChannelEntries = Object.entries(CHANNEL_TRAFFIC_KEYS);
+  const perChannelFunnelHasData = allPerChannelEntries.some(function ([, trafficKey]) {
+    return ["daftar", "test", "daftar_ulang", "berkuliah"].some(function (stage) {
+      return Number(getMonthlyChannelStageValue(latestMonth, trafficKey, stage) || 0) > 0;
+    });
+  });
   let sources = [];
 
-  if (hasPerChannelFunnel) {
+  if (hasPerChannelFunnel && perChannelFunnelHasData) {
     sources = channelEntries.map(function ([channelName, trafficKey], index) {
       const visitors = Number(latestMonth[trafficKey] || 0);
       const daftar = getMonthlyChannelStageValue(latestMonth, trafficKey, "daftar");
@@ -1093,6 +1099,10 @@ function getAggregatedMonthlyData(channel = currentChannel) {
       };
     });
   } else if (channel === "all") {
+    if (hasPerChannelFunnel && !perChannelFunnelHasData) {
+      console.warn("Monthly per-channel funnel columns exist but contain zero data.");
+    }
+
     const visitors = Object.values(CHANNEL_TRAFFIC_KEYS).reduce(function (total, trafficKey) {
       return total + Number(latestMonth[trafficKey] || 0);
     }, 0);
@@ -1117,9 +1127,13 @@ function getAggregatedMonthlyData(channel = currentChannel) {
     const [channelName, trafficKey] = channelEntries[0];
     const visitors = Number(latestMonth[trafficKey] || 0);
 
-    console.warn(
-      `Supabase: funnel bulanan per channel ${channelName} belum tersedia. Tambahkan kolom ${trafficKey}_daftar, ${trafficKey}_test, ${trafficKey}_daftar_ulang, dan ${trafficKey}_berkuliah.`
-    );
+    if (hasPerChannelFunnel && !perChannelFunnelHasData) {
+      console.warn("Monthly per-channel funnel columns exist but contain zero data.");
+    } else {
+      console.warn(
+        `Supabase: funnel bulanan per channel ${channelName} belum tersedia. Tambahkan kolom ${trafficKey}_daftar, ${trafficKey}_test, ${trafficKey}_daftar_ulang, dan ${trafficKey}_berkuliah.`
+      );
+    }
 
     sources = [{
       name: channelName,
@@ -1137,7 +1151,7 @@ function getAggregatedMonthlyData(channel = currentChannel) {
     }];
   }
 
-  const summary = sources.reduce(function (totals, source) {
+  let summary = sources.reduce(function (totals, source) {
     totals.total_pengunjung += Number(source.pengunjung || 0);
     totals.total_daftar += Number(source.daftar || 0);
     totals.total_test += Number(source.test || 0);
@@ -1152,6 +1166,36 @@ function getAggregatedMonthlyData(channel = currentChannel) {
     total_berkuliah: 0
   });
 
+  if (channel === "all") {
+    const detailSummary = summary;
+
+    summary = {
+      total_pengunjung: Object.values(CHANNEL_TRAFFIC_KEYS).reduce(function (total, trafficKey) {
+        return total + Number(latestMonth[trafficKey] || 0);
+      }, 0),
+      total_daftar: Number(latestMonth.daftar || 0),
+      total_test: Number(latestMonth.test || 0),
+      total_daftar_ulang: Number(latestMonth.daftar_ulang || 0),
+      total_berkuliah: Number(latestMonth.berkuliah || 0)
+    };
+
+    if (
+      hasPerChannelFunnel
+      && perChannelFunnelHasData
+      && (
+        detailSummary.total_daftar !== summary.total_daftar
+        || detailSummary.total_test !== summary.total_test
+        || detailSummary.total_daftar_ulang !== summary.total_daftar_ulang
+        || detailSummary.total_berkuliah !== summary.total_berkuliah
+      )
+    ) {
+      console.warn("Monthly channel detail totals do not match monthly total columns.", {
+        detailSummary: detailSummary,
+        monthlySummary: summary
+      });
+    }
+  }
+
   return {
     range: "month",
     channel: channel,
@@ -1165,16 +1209,68 @@ function getAggregatedMonthlyData(channel = currentChannel) {
   };
 }
 
+function validateFunnelOrder(label, metrics) {
+  const values = [
+    Number(metrics.pengunjung ?? metrics.total_pengunjung ?? 0),
+    Number(metrics.daftar ?? metrics.total_daftar ?? 0),
+    Number(metrics.test ?? metrics.total_test ?? 0),
+    Number(metrics.daftar_ulang ?? metrics.total_daftar_ulang ?? 0),
+    Number(metrics.berkuliah ?? metrics.total_berkuliah ?? 0)
+  ];
+  const isValid = values.every(function (value, index) {
+    return index === 0 || values[index - 1] >= value;
+  });
+
+  if (!isValid) {
+    console.warn(`Invalid funnel order for ${label}.`, {
+      pengunjung: values[0],
+      daftar: values[1],
+      test: values[2],
+      daftar_ulang: values[3],
+      berkuliah: values[4]
+    });
+  }
+}
+
 function getMetricsByRangeAndChannel(range = currentDateRange, channel = currentChannel) {
+  let metrics;
+
   if (range === "month" || range === "30") {
-    return getAggregatedMonthlyData(channel);
+    metrics = getAggregatedMonthlyData(channel);
+  } else if (range === "year") {
+    metrics = getAggregatedYearlyData(channel);
+
+    if (channel === "all" && appData.summary) {
+      metrics.summary = {
+        total_pengunjung: Number(appData.summary.total_pengunjung || 0),
+        total_daftar: Number(appData.summary.total_daftar || 0),
+        total_test: Number(appData.summary.total_test || 0),
+        total_daftar_ulang: Number(appData.summary.total_daftar_ulang || 0),
+        total_berkuliah: Number(appData.summary.total_berkuliah || 0)
+      };
+      metrics.conversion_rate = calculateConversionRate(
+        metrics.summary.total_pengunjung,
+        metrics.summary.total_berkuliah
+      );
+      metrics.source = "summary_metrics";
+    }
+  } else {
+    metrics = getAggregatedDailyData("7", channel);
   }
 
-  if (range === "year") {
-    return getAggregatedYearlyData(channel);
-  }
+  metrics.sources.forEach(function (source) {
+    validateFunnelOrder(`${metrics.source}:${source.name}`, source);
+  });
+  validateFunnelOrder(`${metrics.source}:summary`, metrics.summary);
 
-  return getAggregatedDailyData("7", channel);
+  console.log("METRICS SOURCE", {
+    range: range,
+    channel: channel,
+    sourceTable: metrics.source,
+    metrics: metrics
+  });
+
+  return metrics;
 }
 
 /* ================= FILTERED DATA ================= */
