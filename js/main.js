@@ -200,8 +200,46 @@ function validateEduFunnelData(data) {
 }
 
 function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
-  if (!summaryRow || !Array.isArray(sourcesRows) || !Array.isArray(trafficRows) || !Array.isArray(dailyRows)) {
-    throw new Error("Format data Supabase tidak lengkap.");
+  const safeSummaryRow = summaryRow && typeof summaryRow === "object"
+    ? summaryRow
+    : {};
+  let safeSourcesRows = Array.isArray(sourcesRows) ? sourcesRows : [];
+  const safeTrafficRows = Array.isArray(trafficRows) ? trafficRows : [];
+  const safeDailyRows = Array.isArray(dailyRows) ? dailyRows : [];
+
+  if (!summaryRow) {
+    console.warn("Supabase: summary_metrics kosong. Menggunakan nilai summary default 0.");
+  }
+
+  if (safeSourcesRows.length === 0) {
+    console.warn(
+      "Supabase: funnel_sources kosong. Menggunakan kerangka channel agar data harian tetap dapat dirender."
+    );
+
+    safeSourcesRows = Object.keys(CHANNEL_TRAFFIC_KEYS).map(function (channelName, index) {
+      return {
+        name: channelName,
+        pengunjung: 0,
+        daftar: 0,
+        test: 0,
+        daftar_ulang: 0,
+        berkuliah: 0,
+        conversion_rate: 0,
+        drop_off: 100,
+        progression_rates: {},
+        attrition_rates: {},
+        ranking: index + 1,
+        status: "No Data"
+      };
+    });
+  }
+
+  if (safeTrafficRows.length === 0) {
+    console.warn("Supabase: monthly_channel_traffic kosong.");
+  }
+
+  if (safeDailyRows.length === 0) {
+    console.warn("Supabase: daily_channel_traffic kosong.");
   }
 
   const requiredDailyFields = [
@@ -214,24 +252,24 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
     "berkuliah"
   ];
 
-  dailyRows.forEach(function (row, index) {
+  safeDailyRows.forEach(function (row, index) {
     const missingFields = requiredDailyFields.filter(function (field) {
       return !Object.prototype.hasOwnProperty.call(row, field);
     });
 
     if (missingFields.length > 0) {
-      throw new Error(
-        `daily_channel_traffic baris ${index + 1} tidak memiliki kolom: ${missingFields.join(", ")}`
+      console.warn(
+        `Supabase: daily_channel_traffic baris ${index + 1} tidak memiliki kolom: ${missingFields.join(", ")}. Nilai yang hilang memakai default.`
       );
     }
   });
 
   const summary = {
-    total_pengunjung: Number(summaryRow.total_pengunjung),
-    total_daftar: Number(summaryRow.total_daftar),
-    total_test: Number(summaryRow.total_test),
-    total_daftar_ulang: Number(summaryRow.total_daftar_ulang),
-    total_berkuliah: Number(summaryRow.total_berkuliah)
+    total_pengunjung: Number(safeSummaryRow.total_pengunjung || 0),
+    total_daftar: Number(safeSummaryRow.total_daftar || 0),
+    total_test: Number(safeSummaryRow.total_test || 0),
+    total_daftar_ulang: Number(safeSummaryRow.total_daftar_ulang || 0),
+    total_berkuliah: Number(safeSummaryRow.total_berkuliah || 0)
   };
 
   const conversionRate = summary.total_pengunjung === 0
@@ -240,9 +278,9 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
 
   return {
     metadata: {
-      project_name: summaryRow.project_name,
-      period: summaryRow.period,
-      generated_by: summaryRow.generated_by
+      project_name: safeSummaryRow.project_name || "EduFunnel",
+      period: safeSummaryRow.period || "2025",
+      generated_by: safeSummaryRow.generated_by || "Supabase"
     },
     summary: summary,
     metric_cards: [
@@ -259,54 +297,54 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
         value: conversionRate
       }
     ],
-    funnel_stages: summaryRow.funnel_stages || [
+    funnel_stages: safeSummaryRow.funnel_stages || [
       "Pengunjung",
       "Daftar",
       "Test",
       "Daftar Ulang",
       "Berkuliah"
     ],
-    funnel_data: summaryRow.funnel_data || [
+    funnel_data: safeSummaryRow.funnel_data || [
       summary.total_pengunjung,
       summary.total_daftar,
       summary.total_test,
       summary.total_daftar_ulang,
       summary.total_berkuliah
     ],
-    sources: sourcesRows.map(function (source) {
+    sources: safeSourcesRows.map(function (source, index) {
       return {
-        name: source.name,
-        pengunjung: Number(source.pengunjung),
-        daftar: Number(source.daftar),
-        test: Number(source.test),
-        daftar_ulang: Number(source.daftar_ulang),
-        berkuliah: Number(source.berkuliah),
-        conversion_rate: Number(source.conversion_rate),
-        drop_off: Number(source.drop_off),
+        name: source.name || `Channel ${index + 1}`,
+        pengunjung: Number(source.pengunjung || 0),
+        daftar: Number(source.daftar || 0),
+        test: Number(source.test || 0),
+        daftar_ulang: Number(source.daftar_ulang || 0),
+        berkuliah: Number(source.berkuliah || 0),
+        conversion_rate: Number(source.conversion_rate || 0),
+        drop_off: Number(source.drop_off ?? 100),
         progression_rates: source.progression_rates || {},
         attrition_rates: source.attrition_rates || {},
-        ranking: Number(source.ranking),
-        status: source.status
+        ranking: Number(source.ranking || index + 1),
+        status: source.status || "No Data"
       };
     }),
-    monthly_channel_traffic: trafficRows.map(function (item) {
+    monthly_channel_traffic: safeTrafficRows.map(function (item) {
       return {
-        month: item.month,
-        google_ads: Number(item.google_ads),
-        instagram: Number(item.instagram),
-        twitter_x: Number(item.twitter_x),
-        website: Number(item.website)
+        month: item.month || "",
+        google_ads: Number(item.google_ads || 0),
+        instagram: Number(item.instagram || 0),
+        twitter_x: Number(item.twitter_x || 0),
+        website: Number(item.website || 0)
       };
     }),
-    daily_channel_traffic: dailyRows.map(function (item) {
+    daily_channel_traffic: safeDailyRows.map(function (item) {
       return {
-        date: item.date,
-        channel: item.channel,
-        pengunjung: Number(item.pengunjung),
-        daftar: Number(item.daftar),
-        test: Number(item.test),
-        daftar_ulang: Number(item.daftar_ulang),
-        berkuliah: Number(item.berkuliah)
+        date: item.date || "",
+        channel: item.channel || "Unknown",
+        pengunjung: Number(item.pengunjung || 0),
+        daftar: Number(item.daftar || 0),
+        test: Number(item.test || 0),
+        daftar_ulang: Number(item.daftar_ulang || 0),
+        berkuliah: Number(item.berkuliah || 0)
       };
     })
   };
@@ -341,11 +379,6 @@ async function fetchSupabaseData() {
   if (sourcesResult.error) throw sourcesResult.error;
   if (trafficResult.error) throw trafficResult.error;
   if (dailyResult.error) throw dailyResult.error;
-  if (!dailyResult.data || dailyResult.data.length === 0) {
-    throw new Error(
-      "Query daily_channel_traffic berhasil tetapi tidak mengembalikan data. Periksa seed data dan RLS SELECT policy."
-    );
-  }
 
   console.log("daily_channel_traffic", dailyResult.data);
 
