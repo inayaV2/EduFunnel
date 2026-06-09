@@ -372,7 +372,6 @@ async function fetchSupabaseData() {
     client
       .from("daily_channel_traffic")
       .select("*")
-      .order("date", { ascending: true })
   ]);
 
   if (summaryResult.error) throw summaryResult.error;
@@ -533,7 +532,31 @@ function getMonthlyChannelTraffic() {
 }
 
 function getDailyChannelTraffic() {
-  return appData.daily_channel_traffic || [];
+  const dailyRows = Array.isArray(appData.daily_channel_traffic)
+    ? appData.daily_channel_traffic
+    : [];
+
+  const latestDates = [...new Set(
+    dailyRows
+      .map(function (item) {
+        return item.date;
+      })
+      .filter(Boolean)
+  )]
+    .sort(function (dateA, dateB) {
+      return new Date(dateB).getTime() - new Date(dateA).getTime();
+    })
+    .slice(0, 7);
+
+  const latestDateSet = new Set(latestDates);
+
+  return dailyRows
+    .filter(function (item) {
+      return latestDateSet.has(item.date);
+    })
+    .sort(function (itemA, itemB) {
+      return new Date(itemA.date).getTime() - new Date(itemB.date).getTime();
+    });
 }
 
 function getDailyChannelSummary() {
