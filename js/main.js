@@ -1103,26 +1103,33 @@ function getAggregatedMonthlyData(channel = currentChannel) {
       console.warn("Monthly per-channel funnel columns exist but contain zero data.");
     }
 
-    const visitors = Object.values(CHANNEL_TRAFFIC_KEYS).reduce(function (total, trafficKey) {
-      return total + Number(latestMonth[trafficKey] || 0);
-    }, 0);
-    const enrolled = Number(latestMonth.berkuliah || 0);
-    const conversionRate = calculateConversionRate(visitors, enrolled);
+    sources = channelEntries.map(function ([channelName, trafficKey], index) {
+      const visitors = Number(latestMonth[trafficKey] || 0);
+      const daftar = Number(getMonthlyChannelStageValue(latestMonth, trafficKey, "daftar") || 0);
+      const test = Number(getMonthlyChannelStageValue(latestMonth, trafficKey, "test") || 0);
+      const daftarUlang = Number(
+        getMonthlyChannelStageValue(latestMonth, trafficKey, "daftar_ulang") || 0
+      );
+      const enrolled = Number(
+        getMonthlyChannelStageValue(latestMonth, trafficKey, "berkuliah") || 0
+      );
+      const conversionRate = calculateConversionRate(visitors, enrolled);
 
-    sources = [{
-      name: "All Channels",
-      pengunjung: visitors,
-      daftar: Number(latestMonth.daftar || 0),
-      test: Number(latestMonth.test || 0),
-      daftar_ulang: Number(latestMonth.daftar_ulang || 0),
-      berkuliah: enrolled,
-      conversion_rate: Number(formatConversionRate(conversionRate)),
-      drop_off: visitors > 0 ? Number(formatConversionRate(100 - conversionRate)) : 0,
-      progression_rates: {},
-      attrition_rates: {},
-      ranking: 1,
-      status: visitors === 0 ? "No Data" : conversionRate >= 5 ? "Stable" : "Alert"
-    }];
+      return {
+        name: channelName,
+        pengunjung: visitors,
+        daftar: daftar,
+        test: test,
+        daftar_ulang: daftarUlang,
+        berkuliah: enrolled,
+        conversion_rate: Number(formatConversionRate(conversionRate)),
+        drop_off: visitors > 0 ? Number(formatConversionRate(100 - conversionRate)) : 0,
+        progression_rates: {},
+        attrition_rates: {},
+        ranking: index + 1,
+        status: visitors === 0 ? "No Data" : conversionRate >= 5 ? "Stable" : "Alert"
+      };
+    });
   } else {
     const [channelName, trafficKey] = channelEntries[0];
     const visitors = Number(latestMonth[trafficKey] || 0);
