@@ -301,9 +301,9 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
     total_berkuliah: Number(safeSummaryRow.total_berkuliah || 0)
   };
 
-  const conversionRate = summary.total_pengunjung === 0
-    ? 0
-    : Number(((summary.total_berkuliah / summary.total_pengunjung) * 100).toFixed(1));
+  const conversionRate = Number(formatConversionRate(
+    calculateConversionRate(summary.total_pengunjung, summary.total_berkuliah)
+  ));
 
   return {
     metadata: {
@@ -341,15 +341,21 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
       summary.total_berkuliah
     ],
     sources: safeSourcesRows.map(function (source, index) {
+      const visitors = Number(source.pengunjung || 0);
+      const enrolled = Number(source.berkuliah || 0);
+      const sourceConversionRate = calculateConversionRate(visitors, enrolled);
+
       return {
         name: source.name || `Channel ${index + 1}`,
-        pengunjung: Number(source.pengunjung || 0),
+        pengunjung: visitors,
         daftar: Number(source.daftar || 0),
         test: Number(source.test || 0),
         daftar_ulang: Number(source.daftar_ulang || 0),
-        berkuliah: Number(source.berkuliah || 0),
-        conversion_rate: Number(source.conversion_rate || 0),
-        drop_off: Number(source.drop_off ?? 100),
+        berkuliah: enrolled,
+        conversion_rate: Number(formatConversionRate(sourceConversionRate)),
+        drop_off: visitors > 0
+          ? Number(formatConversionRate(100 - sourceConversionRate))
+          : 0,
         progression_rates: source.progression_rates || {},
         attrition_rates: source.attrition_rates || {},
         ranking: Number(source.ranking || index + 1),
@@ -358,6 +364,7 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
     }),
     monthly_channel_traffic: safeTrafficRows.map(function (item) {
       return {
+        ...item,
         month_order: Number(item.month_order || 0),
         month: item.month || "",
         google_ads: Number(item.google_ads || 0),
@@ -717,6 +724,22 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
     const fallbackSources = (Array.isArray(appData.sources) ? appData.sources : [])
       .filter(function (source) {
         return channel === "all" || source.name === channel;
+      })
+      .map(function (source) {
+        const visitors = Number(source.pengunjung || 0);
+        const enrolled = Number(source.berkuliah || 0);
+        const conversionRate = calculateConversionRate(visitors, enrolled);
+
+        return {
+          ...source,
+          pengunjung: visitors,
+          daftar: Number(source.daftar || 0),
+          test: Number(source.test || 0),
+          daftar_ulang: Number(source.daftar_ulang || 0),
+          berkuliah: enrolled,
+          conversion_rate: Number(formatConversionRate(conversionRate)),
+          drop_off: visitors > 0 ? Number(formatConversionRate(100 - conversionRate)) : 0
+        };
       });
     const fallbackSummary = fallbackSources.reduce(function (totals, source) {
       totals.total_pengunjung += Number(source.pengunjung || 0);
@@ -740,9 +763,10 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
       rows: [],
       sources: fallbackSources,
       summary: fallbackSummary,
-      conversion_rate: fallbackSources.length === 1
-        ? Number(fallbackSources[0].conversion_rate || 0)
-        : 0,
+      conversion_rate: calculateConversionRate(
+        fallbackSummary.total_pengunjung,
+        fallbackSummary.total_berkuliah
+      ),
       source: "funnel_sources_fallback"
     };
 
@@ -856,7 +880,7 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
     };
     const visitors = Number(counts.pengunjung);
     const enrolled = Number(counts.berkuliah);
-    const conversionRate = visitors === 0 ? 0 : (enrolled / visitors) * 100;
+    const conversionRate = calculateConversionRate(visitors, enrolled);
 
     return {
       name: channelName,
@@ -895,11 +919,10 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
     rows: filteredRows,
     sources: sources,
     summary: summary,
-    conversion_rate: sources.length === 1
-      ? Number(sources[0].conversion_rate || 0)
-      : summary.total_pengunjung === 0
-        ? 0
-        : (summary.total_berkuliah / summary.total_pengunjung) * 100,
+    conversion_rate: calculateConversionRate(
+      summary.total_pengunjung,
+      summary.total_berkuliah
+    ),
     source: "daily_channel_traffic"
   };
 
@@ -956,6 +979,7 @@ function getAggregatedYearlyData(channel = currentChannel) {
     .map(function (source) {
       const visitors = Number(source.pengunjung || 0);
       const enrolled = Number(source.berkuliah || 0);
+      const conversionRate = calculateConversionRate(visitors, enrolled);
 
       return {
         ...source,
@@ -964,8 +988,8 @@ function getAggregatedYearlyData(channel = currentChannel) {
         test: Number(source.test || 0),
         daftar_ulang: Number(source.daftar_ulang || 0),
         berkuliah: enrolled,
-        conversion_rate: Number(source.conversion_rate || 0),
-        drop_off: Number(source.drop_off ?? (100 - Number(source.conversion_rate || 0)))
+        conversion_rate: Number(formatConversionRate(conversionRate)),
+        drop_off: visitors > 0 ? Number(formatConversionRate(100 - conversionRate)) : 0
       };
     });
   const summary = yearlySources.reduce(function (totals, source) {
@@ -984,87 +1008,74 @@ function getAggregatedYearlyData(channel = currentChannel) {
     total_berkuliah: 0
   });
 
-  const databaseConversionRate = yearlySources.length === 1
-    ? Number(yearlySources[0].conversion_rate || 0)
-    : Number(
-      appData.metric_cards?.find(function (card) {
-        return card.title === "Conversion Rate";
-      })?.value || 0
-    );
+  const yearlyConversionRate = calculateConversionRate(
+    summary.total_pengunjung,
+    summary.total_berkuliah
+  );
 
   return {
     range: "year",
     channel: channel,
     sources: yearlySources,
     summary: summary,
-    conversion_rate: databaseConversionRate,
+    conversion_rate: Number(formatConversionRate(yearlyConversionRate)),
     source: "funnel_sources"
   };
 }
 
-function summarizeMetricSources(sources) {
-  return sources.reduce(function (totals, source) {
-    totals.total_pengunjung += Number(source.pengunjung || 0);
-    totals.total_daftar += Number(source.daftar || 0);
-    totals.total_test += Number(source.test || 0);
-    totals.total_daftar_ulang += Number(source.daftar_ulang || 0);
-    totals.total_berkuliah += Number(source.berkuliah || 0);
-
-    return totals;
-  }, {
-    total_pengunjung: 0,
-    total_daftar: 0,
-    total_test: 0,
-    total_daftar_ulang: 0,
-    total_berkuliah: 0
+function getMonthlyChannelStageValue(monthRow, trafficKey, stage) {
+  const candidateKeys = [
+    `${trafficKey}_${stage}`,
+    `${stage}_${trafficKey}`
+  ];
+  const matchingKey = candidateKeys.find(function (key) {
+    return Object.prototype.hasOwnProperty.call(monthRow, key);
   });
+
+  return matchingKey ? Number(monthRow[matchingKey] || 0) : null;
 }
 
-function getMonthlyMetricSources(channel) {
+function getAggregatedMonthlyData(channel = currentChannel) {
   const latestMonth = getLatestMonthlyTraffic();
 
   if (!latestMonth) {
-    return [];
+    console.warn("Supabase: monthly_channel_traffic kosong. Tidak ada metrik This Month.");
+
+    return {
+      range: "month",
+      channel: channel,
+      sources: [],
+      summary: {
+        total_pengunjung: 0,
+        total_daftar: 0,
+        total_test: 0,
+        total_daftar_ulang: 0,
+        total_berkuliah: 0
+      },
+      conversion_rate: 0,
+      source: "monthly_channel_traffic"
+    };
   }
 
   const channelEntries = Object.entries(CHANNEL_TRAFFIC_KEYS)
     .filter(function ([channelName]) {
       return channel === "all" || channelName === channel;
     });
-  const totalVisitors = channelEntries.reduce(function (total, [, trafficKey]) {
-    return total + Number(latestMonth[trafficKey] || 0);
-  }, 0);
+  const hasPerChannelFunnel = channelEntries.every(function ([, trafficKey]) {
+    return ["daftar", "test", "daftar_ulang", "berkuliah"].every(function (stage) {
+      return getMonthlyChannelStageValue(latestMonth, trafficKey, stage) !== null;
+    });
+  });
+  let sources = [];
 
-  function allocateMonthlyStage(totalValue, visitors, index) {
-    if (channel !== "all") {
-      return Number(totalValue || 0);
-    }
-
-    if (totalVisitors === 0) {
-      return 0;
-    }
-
-    if (index === channelEntries.length - 1) {
-      const allocatedBefore = channelEntries
-        .slice(0, index)
-        .reduce(function (total, [, previousTrafficKey]) {
-          const previousVisitors = Number(latestMonth[previousTrafficKey] || 0);
-          return total + Math.floor((Number(totalValue || 0) * previousVisitors) / totalVisitors);
-        }, 0);
-
-      return Number(totalValue || 0) - allocatedBefore;
-    }
-
-    return Math.floor((Number(totalValue || 0) * visitors) / totalVisitors);
-  }
-
-  return channelEntries.map(function ([channelName, trafficKey], index) {
+  if (hasPerChannelFunnel) {
+    sources = channelEntries.map(function ([channelName, trafficKey], index) {
       const visitors = Number(latestMonth[trafficKey] || 0);
-      const daftar = allocateMonthlyStage(latestMonth.daftar, visitors, index);
-      const test = allocateMonthlyStage(latestMonth.test, visitors, index);
-      const daftarUlang = allocateMonthlyStage(latestMonth.daftar_ulang, visitors, index);
-      const enrolled = allocateMonthlyStage(latestMonth.berkuliah, visitors, index);
-      const conversionRate = visitors === 0 ? 0 : (enrolled / visitors) * 100;
+      const daftar = getMonthlyChannelStageValue(latestMonth, trafficKey, "daftar");
+      const test = getMonthlyChannelStageValue(latestMonth, trafficKey, "test");
+      const daftarUlang = getMonthlyChannelStageValue(latestMonth, trafficKey, "daftar_ulang");
+      const enrolled = getMonthlyChannelStageValue(latestMonth, trafficKey, "berkuliah");
+      const conversionRate = calculateConversionRate(visitors, enrolled);
 
       return {
         name: channelName,
@@ -1078,44 +1089,89 @@ function getMonthlyMetricSources(channel) {
         progression_rates: {},
         attrition_rates: {},
         ranking: index + 1,
-        status: visitors > 0 ? "Stable" : "No Data"
+        status: visitors === 0 ? "No Data" : conversionRate >= 5 ? "Stable" : "Alert"
       };
     });
-}
+  } else if (channel === "all") {
+    const visitors = Object.values(CHANNEL_TRAFFIC_KEYS).reduce(function (total, trafficKey) {
+      return total + Number(latestMonth[trafficKey] || 0);
+    }, 0);
+    const enrolled = Number(latestMonth.berkuliah || 0);
+    const conversionRate = calculateConversionRate(visitors, enrolled);
 
-function getFilteredMetrics(channel = currentChannel, dateRange = currentDateRange) {
-  if (dateRange === "month" || dateRange === "30") {
-    const monthlySources = getMonthlyMetricSources(channel);
-    const monthlySummary = summarizeMetricSources(monthlySources);
-    const monthlyConversionRate = monthlySummary.total_pengunjung === 0
-      ? 0
-      : (monthlySummary.total_berkuliah / monthlySummary.total_pengunjung) * 100;
+    sources = [{
+      name: "All Channels",
+      pengunjung: visitors,
+      daftar: Number(latestMonth.daftar || 0),
+      test: Number(latestMonth.test || 0),
+      daftar_ulang: Number(latestMonth.daftar_ulang || 0),
+      berkuliah: enrolled,
+      conversion_rate: Number(formatConversionRate(conversionRate)),
+      drop_off: visitors > 0 ? Number(formatConversionRate(100 - conversionRate)) : 0,
+      progression_rates: {},
+      attrition_rates: {},
+      ranking: 1,
+      status: visitors === 0 ? "No Data" : conversionRate >= 5 ? "Stable" : "Alert"
+    }];
+  } else {
+    const [channelName, trafficKey] = channelEntries[0];
+    const visitors = Number(latestMonth[trafficKey] || 0);
 
-    return {
-      range: "month",
-      channel: channel,
-      sources: monthlySources,
-      summary: monthlySummary,
-      conversion_rate: Number(formatConversionRate(monthlyConversionRate)),
-      source: "monthly_channel_traffic"
-    };
+    console.warn(
+      `Supabase: funnel bulanan per channel ${channelName} belum tersedia. Tambahkan kolom ${trafficKey}_daftar, ${trafficKey}_test, ${trafficKey}_daftar_ulang, dan ${trafficKey}_berkuliah.`
+    );
+
+    sources = [{
+      name: channelName,
+      pengunjung: visitors,
+      daftar: 0,
+      test: 0,
+      daftar_ulang: 0,
+      berkuliah: 0,
+      conversion_rate: 0,
+      drop_off: visitors > 0 ? 100 : 0,
+      progression_rates: {},
+      attrition_rates: {},
+      ranking: 1,
+      status: visitors > 0 ? "Stable" : "No Data"
+    }];
   }
 
-  if (dateRange === "year") {
-    const yearlyData = getAggregatedYearlyData(channel);
+  const summary = sources.reduce(function (totals, source) {
+    totals.total_pengunjung += Number(source.pengunjung || 0);
+    totals.total_daftar += Number(source.daftar || 0);
+    totals.total_test += Number(source.test || 0);
+    totals.total_daftar_ulang += Number(source.daftar_ulang || 0);
+    totals.total_berkuliah += Number(source.berkuliah || 0);
+    return totals;
+  }, {
+    total_pengunjung: 0,
+    total_daftar: 0,
+    total_test: 0,
+    total_daftar_ulang: 0,
+    total_berkuliah: 0
+  });
 
-    if (channel === "all" && appData.summary) {
-      yearlyData.summary = {
-        total_pengunjung: Number(appData.summary.total_pengunjung || 0),
-        total_daftar: Number(appData.summary.total_daftar || 0),
-        total_test: Number(appData.summary.total_test || 0),
-        total_daftar_ulang: Number(appData.summary.total_daftar_ulang || 0),
-        total_berkuliah: Number(appData.summary.total_berkuliah || 0)
-      };
-      yearlyData.source = "summary_metrics_and_funnel_sources";
-    }
+  return {
+    range: "month",
+    channel: channel,
+    sources: sources,
+    summary: summary,
+    conversion_rate: calculateConversionRate(
+      summary.total_pengunjung,
+      summary.total_berkuliah
+    ),
+    source: "monthly_channel_traffic"
+  };
+}
 
-    return yearlyData;
+function getMetricsByRangeAndChannel(range = currentDateRange, channel = currentChannel) {
+  if (range === "month" || range === "30") {
+    return getAggregatedMonthlyData(channel);
+  }
+
+  if (range === "year") {
+    return getAggregatedYearlyData(channel);
   }
 
   return getAggregatedDailyData("7", channel);
@@ -1123,11 +1179,11 @@ function getFilteredMetrics(channel = currentChannel, dateRange = currentDateRan
 
 /* ================= FILTERED DATA ================= */
 function getFilteredSources() {
-  return getFilteredMetrics(currentChannel, currentDateRange).sources;
+  return getMetricsByRangeAndChannel(currentDateRange, currentChannel).sources;
 }
 
 function getFilteredSummary() {
-  return getFilteredMetrics(currentChannel, currentDateRange).summary;
+  return getMetricsByRangeAndChannel(currentDateRange, currentChannel).summary;
 }
 
 function getDateRangeLabel() {
@@ -1160,6 +1216,13 @@ function formatConversionRate(value) {
   const numericValue = Number(value);
 
   return Number.isFinite(numericValue) ? numericValue.toFixed(2) : "0.00";
+}
+
+function calculateConversionRate(visitors, enrolled) {
+  const visitorCount = Number(visitors || 0);
+  const enrolledCount = Number(enrolled || 0);
+
+  return visitorCount === 0 ? 0 : (enrolledCount / visitorCount) * 100;
 }
 
 function animateNumber(element, targetValue, options = {}) {
@@ -1262,7 +1325,7 @@ function renderPage(page) {
 
 /* ================= HELPERS ================= */
 function getTotalConversionRate() {
-  const metrics = getFilteredMetrics(currentChannel, currentDateRange);
+  const metrics = getMetricsByRangeAndChannel(currentDateRange, currentChannel);
 
   return formatConversionRate(metrics.conversion_rate);
 }
