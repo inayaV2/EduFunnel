@@ -7,6 +7,7 @@ let currentDateRange = "7";
 let supabaseClient = null;
 let supabaseDataClient = null;
 let activeDataSource = "none";
+let dailyAggregationCache = null;
 
 const SUPABASE_URL = "https://tyjgxjawjqwerwemzkhy.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5amd4amF3anF3ZXJ3ZW16a2h5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzNDM1NDIsImV4cCI6MjA5NDkxOTU0Mn0.yDYRxuK0Mw-Ny-etoULGEXczXlKpdP5M2YVsouDi5y0";
@@ -669,11 +670,16 @@ function parseDailyTrafficDate(value) {
   return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
 }
 
-function getDailyRowsByDateRange() {
+function getAggregatedDailyData(range = currentDateRange, channel = currentChannel) {
   const dailyRows = getDailyChannelTraffic();
+  const cacheKey = `${range}:${channel}`;
 
-  if (dailyRows.length === 0) {
-    return [];
+  if (
+    dailyAggregationCache
+    && dailyAggregationCache.key === cacheKey
+    && dailyAggregationCache.rowsReference === dailyRows
+  ) {
+    return dailyAggregationCache.result;
   }
 
   const datedRows = dailyRows
@@ -687,19 +693,15 @@ function getDailyRowsByDateRange() {
       return entry.parsedDate;
     });
 
-  if (datedRows.length === 0) {
-    console.warn("Supabase: tanggal daily_channel_traffic tidak valid. Menggunakan semua row.");
-    return dailyRows;
-  }
+  const latestDate = datedRows.length > 0
+    ? datedRows.reduce(function (latest, entry) {
+      return entry.parsedDate > latest ? entry.parsedDate : latest;
+    }, datedRows[0].parsedDate)
+    : null;
+  let rangeRows = dailyRows;
 
-  const latestDate = datedRows.reduce(function (latest, entry) {
-    return entry.parsedDate > latest ? entry.parsedDate : latest;
-  }, datedRows[0].parsedDate);
-
-  let filteredRows = [];
-
-  if (currentDateRange === "7") {
-    const latestDateValues = [...new Set(
+  if (latestDate && range === "7") {
+    const latestDates = [...new Set(
       datedRows.map(function (entry) {
         return entry.item.date;
       })
@@ -708,9 +710,9 @@ function getDailyRowsByDateRange() {
         return parseDailyTrafficDate(dateB) - parseDailyTrafficDate(dateA);
       })
       .slice(0, 7);
-    const latestDateSet = new Set(latestDateValues);
+    const latestDateSet = new Set(latestDates);
 
-    filteredRows = datedRows
+    rangeRows = datedRows
       .filter(function (entry) {
         return latestDateSet.has(entry.item.date);
       })
@@ -719,8 +721,8 @@ function getDailyRowsByDateRange() {
       });
   }
 
-  if (currentDateRange === "month") {
-    filteredRows = datedRows
+  if (latestDate && range === "month") {
+    rangeRows = datedRows
       .filter(function (entry) {
         return entry.parsedDate.getFullYear() === latestDate.getFullYear()
           && entry.parsedDate.getMonth() === latestDate.getMonth();
@@ -730,8 +732,8 @@ function getDailyRowsByDateRange() {
       });
   }
 
-  if (currentDateRange === "year") {
-    filteredRows = datedRows
+  if (latestDate && range === "year") {
+    rangeRows = datedRows
       .filter(function (entry) {
         return entry.parsedDate.getFullYear() === latestDate.getFullYear();
       })
@@ -740,20 +742,16 @@ function getDailyRowsByDateRange() {
       });
   }
 
-  if (filteredRows.length === 0) {
-    console.warn(
-      `Supabase: daily_channel_traffic untuk ${getDateRangeLabel()} kosong. Menggunakan semua row daily.`
-    );
-    return dailyRows;
-  }
+  const filteredRows = channel === "all"
+    ? rangeRows
+    : rangeRows.filter(function (item) {
+      return item.channel === channel;
+    });
+  const grouped = filteredRows.reduce(function (totals, item) {
+    const channelName = item.channel;
 
-  return filteredRows;
-}
-
-function getDailyChannelSummary(dailyRows = getDailyRowsByDateRange()) {
-  const dailySummary = dailyRows.reduce(function (totals, item) {
-    if (!totals[item.channel]) {
-      totals[item.channel] = {
+    if (!totals[channelName]) {
+      totals[channelName] = {
         pengunjung: 0,
         daftar: 0,
         test: 0,
@@ -762,31 +760,94 @@ function getDailyChannelSummary(dailyRows = getDailyRowsByDateRange()) {
       };
     }
 
-    totals[item.channel].pengunjung += Number(item.pengunjung || 0);
-    totals[item.channel].daftar += Number(item.daftar || 0);
-    totals[item.channel].test += Number(item.test || 0);
-    totals[item.channel].daftar_ulang += Number(item.daftar_ulang || 0);
-    totals[item.channel].berkuliah += Number(item.berkuliah || 0);
+    totals[channelName].pengunjung += Number(item.pengunjung || 0);
+    totals[channelName].daftar += Number(item.daftar || 0);
+    totals[channelName].test += Number(item.test || 0);
+    totals[channelName].daftar_ulang += Number(item.daftar_ulang || 0);
+    totals[channelName].berkuliah += Number(item.berkuliah || 0);
 
     return totals;
   }, {});
+  const selectedChannels = channel === "all"
+    ? Object.keys(CHANNEL_TRAFFIC_KEYS)
+    : [channel];
+  const sources = selectedChannels.map(function (channelName, index) {
+    const counts = grouped[channelName] || {
+      pengunjung: 0,
+      daftar: 0,
+      test: 0,
+      daftar_ulang: 0,
+      berkuliah: 0
+    };
+    const visitors = Number(counts.pengunjung);
+    const enrolled = Number(counts.berkuliah);
+    const conversionRate = visitors === 0 ? 0 : (enrolled / visitors) * 100;
 
-  console.log("daily_channel_traffic summary", dailySummary);
+    return {
+      name: channelName,
+      pengunjung: visitors,
+      daftar: Number(counts.daftar),
+      test: Number(counts.test),
+      daftar_ulang: Number(counts.daftar_ulang),
+      berkuliah: enrolled,
+      conversion_rate: conversionRate.toFixed(2),
+      drop_off: Number((100 - conversionRate).toFixed(2)),
+      progression_rates: {},
+      attrition_rates: {},
+      ranking: index + 1,
+      status: visitors === 0 ? "No Data" : conversionRate >= 5 ? "Stable" : "Alert"
+    };
+  });
+  const summary = sources.reduce(function (totals, source) {
+    totals.total_pengunjung += Number(source.pengunjung);
+    totals.total_daftar += Number(source.daftar);
+    totals.total_test += Number(source.test);
+    totals.total_daftar_ulang += Number(source.daftar_ulang);
+    totals.total_berkuliah += Number(source.berkuliah);
 
-  return dailySummary;
+    return totals;
+  }, {
+    total_pengunjung: 0,
+    total_daftar: 0,
+    total_test: 0,
+    total_daftar_ulang: 0,
+    total_berkuliah: 0
+  });
+  const result = {
+    range: range,
+    channel: channel,
+    latestDate: latestDate ? latestDate.toISOString().slice(0, 10) : null,
+    rows: filteredRows,
+    sources: sources,
+    summary: summary
+  };
+
+  dailyAggregationCache = {
+    key: cacheKey,
+    rowsReference: dailyRows,
+    result: result
+  };
+
+  console.log("AGGREGATED DAILY DATA:", result);
+
+  return result;
 }
 
 function getChartDataByDateRange() {
   const monthlyData = getMonthlyChannelTraffic();
   const latestMonth = monthlyData[monthlyData.length - 1];
-  const dailySummary = getDailyChannelSummary(getDailyRowsByDateRange());
+  const dailySources = getAggregatedDailyData(currentDateRange, "all").sources;
+  const dailyVisitors = dailySources.reduce(function (totals, source) {
+    totals[source.name] = Number(source.pengunjung);
+    return totals;
+  }, {});
   const dailyChartData = [
     {
       month: "Daily Traffic",
-      google_ads: Number(dailySummary["Google Ads"]?.pengunjung || 0),
-      instagram: Number(dailySummary.Instagram?.pengunjung || 0),
-      twitter_x: Number(dailySummary["Twitter/X"]?.pengunjung || 0),
-      website: Number(dailySummary.Website?.pengunjung || 0)
+      google_ads: Number(dailyVisitors["Google Ads"] || 0),
+      instagram: Number(dailyVisitors.Instagram || 0),
+      twitter_x: Number(dailyVisitors["Twitter/X"] || 0),
+      website: Number(dailyVisitors.Website || 0)
     }
   ];
 
@@ -806,95 +867,17 @@ function getChartDataByDateRange() {
   return [];
 }
 
-function buildSourceFromDailyData(source, dailySummary) {
-  const counts = dailySummary[source.name] || {
-    pengunjung: 0,
-    daftar: 0,
-    test: 0,
-    daftar_ulang: 0,
-    berkuliah: 0
-  };
-  const visitors = Number(counts.pengunjung);
-  const enrolled = Number(counts.berkuliah);
-  const conversionRate = visitors === 0 ? 0 : (enrolled / visitors) * 100;
-
-  return {
-    ...source,
-    pengunjung: visitors,
-    daftar: Number(counts.daftar),
-    test: Number(counts.test),
-    daftar_ulang: Number(counts.daftar_ulang),
-    berkuliah: enrolled,
-    conversion_rate: conversionRate.toFixed(2),
-    drop_off: Number((100 - conversionRate).toFixed(2)),
-    status: visitors === 0 ? "No Data" : conversionRate >= 5 ? "Stable" : "Alert"
-  };
-}
-
 function getDateRangeSources() {
-  const dailyRows = getDailyChannelTraffic();
-
-  if (dailyRows.length === 0) {
-    console.warn("Supabase: daily_channel_traffic kosong total. Menggunakan funnel_sources.");
-    return appData.sources;
-  }
-
-  const dailySummary = getDailyChannelSummary(getDailyRowsByDateRange());
-  const sourceTemplates = Object.keys(CHANNEL_TRAFFIC_KEYS).map(function (channelName, index) {
-    return {
-      name: channelName,
-      pengunjung: 0,
-      daftar: 0,
-      test: 0,
-      daftar_ulang: 0,
-      berkuliah: 0,
-      conversion_rate: 0,
-      drop_off: 100,
-      progression_rates: {},
-      attrition_rates: {},
-      ranking: index + 1,
-      status: "No Data"
-    };
-  });
-
-  return sourceTemplates.map(function (source) {
-    return buildSourceFromDailyData(source, dailySummary);
-  });
+  return getAggregatedDailyData(currentDateRange, currentChannel).sources;
 }
 
 /* ================= FILTERED DATA ================= */
 function getFilteredSources() {
-  let sources = getDateRangeSources();
-
-  if (currentChannel !== "all") {
-    sources = sources.filter(function (source) {
-      return source.name === currentChannel;
-    });
-  }
-
-  return sources;
+  return getDateRangeSources();
 }
 
 function getFilteredSummary() {
-  const sources = getFilteredSources();
-
-  if (sources.length === 0) {
-    return {
-      total_pengunjung: 0,
-      total_daftar: 0,
-      total_test: 0,
-      total_daftar_ulang: 0,
-      total_berkuliah: 0
-    };
-  }
-
-  return {
-    total_pengunjung: sources.reduce((total, item) => total + Number(item.pengunjung), 0),
-    total_daftar: sources.reduce((total, item) => total + Number(item.daftar), 0),
-    total_test: sources.reduce((total, item) => total + Number(item.test), 0),
-    total_daftar_ulang: sources.reduce((total, item) => total + Number(item.daftar_ulang), 0),
-    total_berkuliah: sources.reduce((total, item) => total + Number(item.berkuliah), 0)
-  };
+  return getAggregatedDailyData(currentDateRange, currentChannel).summary;
 }
 
 function getDateRangeLabel() {
