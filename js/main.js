@@ -682,6 +682,51 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
     return dailyAggregationCache.result;
   }
 
+  if (dailyRows.length === 0) {
+    console.warn(
+      "Supabase: daily_channel_traffic kosong total. Menggunakan funnel_sources sebagai fallback."
+    );
+
+    const fallbackSources = (Array.isArray(appData.sources) ? appData.sources : [])
+      .filter(function (source) {
+        return channel === "all" || source.name === channel;
+      });
+    const fallbackSummary = fallbackSources.reduce(function (totals, source) {
+      totals.total_pengunjung += Number(source.pengunjung || 0);
+      totals.total_daftar += Number(source.daftar || 0);
+      totals.total_test += Number(source.test || 0);
+      totals.total_daftar_ulang += Number(source.daftar_ulang || 0);
+      totals.total_berkuliah += Number(source.berkuliah || 0);
+
+      return totals;
+    }, {
+      total_pengunjung: 0,
+      total_daftar: 0,
+      total_test: 0,
+      total_daftar_ulang: 0,
+      total_berkuliah: 0
+    });
+    const fallbackResult = {
+      range: range,
+      channel: channel,
+      latestDate: null,
+      rows: [],
+      sources: fallbackSources,
+      summary: fallbackSummary,
+      source: "funnel_sources_fallback"
+    };
+
+    dailyAggregationCache = {
+      key: cacheKey,
+      rowsReference: dailyRows,
+      result: fallbackResult
+    };
+
+    console.log("FINAL AGGREGATED DATA:", fallbackResult);
+
+    return fallbackResult;
+  }
+
   const datedRows = dailyRows
     .map(function (item) {
       return {
@@ -819,7 +864,8 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
     latestDate: latestDate ? latestDate.toISOString().slice(0, 10) : null,
     rows: filteredRows,
     sources: sources,
-    summary: summary
+    summary: summary,
+    source: "daily_channel_traffic"
   };
 
   dailyAggregationCache = {
@@ -828,7 +874,7 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
     result: result
   };
 
-  console.log("AGGREGATED DAILY DATA:", result);
+  console.log("FINAL AGGREGATED DATA:", result);
 
   return result;
 }
