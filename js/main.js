@@ -736,6 +736,9 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
       rows: [],
       sources: fallbackSources,
       summary: fallbackSummary,
+      conversion_rate: fallbackSources.length === 1
+        ? Number(fallbackSources[0].conversion_rate || 0)
+        : 0,
       source: "funnel_sources_fallback"
     };
 
@@ -888,6 +891,11 @@ function getAggregatedDailyData(range = currentDateRange, channel = currentChann
     rows: filteredRows,
     sources: sources,
     summary: summary,
+    conversion_rate: sources.length === 1
+      ? Number(sources[0].conversion_rate || 0)
+      : summary.total_pengunjung === 0
+        ? 0
+        : (summary.total_berkuliah / summary.total_pengunjung) * 100,
     source: "daily_channel_traffic"
   };
 
@@ -944,7 +952,6 @@ function getAggregatedYearlyData(channel = currentChannel) {
     .map(function (source) {
       const visitors = Number(source.pengunjung || 0);
       const enrolled = Number(source.berkuliah || 0);
-      const conversionRate = visitors === 0 ? 0 : (enrolled / visitors) * 100;
 
       return {
         ...source,
@@ -953,8 +960,8 @@ function getAggregatedYearlyData(channel = currentChannel) {
         test: Number(source.test || 0),
         daftar_ulang: Number(source.daftar_ulang || 0),
         berkuliah: enrolled,
-        conversion_rate: conversionRate.toFixed(2),
-        drop_off: Number((100 - conversionRate).toFixed(2))
+        conversion_rate: Number(source.conversion_rate || 0),
+        drop_off: Number(source.drop_off ?? (100 - Number(source.conversion_rate || 0)))
       };
     });
   const summary = yearlySources.reduce(function (totals, source) {
@@ -973,11 +980,20 @@ function getAggregatedYearlyData(channel = currentChannel) {
     total_berkuliah: 0
   });
 
+  const databaseConversionRate = yearlySources.length === 1
+    ? Number(yearlySources[0].conversion_rate || 0)
+    : Number(
+      appData.metric_cards?.find(function (card) {
+        return card.title === "Conversion Rate";
+      })?.value || 0
+    );
+
   return {
     range: "year",
     channel: channel,
     sources: yearlySources,
     summary: summary,
+    conversion_rate: databaseConversionRate,
     source: "funnel_sources"
   };
 }
@@ -1040,6 +1056,7 @@ function getFilteredMetrics(channel = currentChannel, dateRange = currentDateRan
       channel: channel,
       sources: monthlySources,
       summary: summarizeMetricSources(monthlySources),
+      conversion_rate: 0,
       source: "monthly_channel_traffic"
     };
   }
@@ -1097,6 +1114,12 @@ function formatAnimatedNumber(value, format, decimals) {
   }
 
   return Math.round(Number(value)).toLocaleString("id-ID");
+}
+
+function formatConversionRate(value) {
+  const numericValue = Number(value);
+
+  return Number.isFinite(numericValue) ? numericValue.toFixed(2) : "0.00";
 }
 
 function animateNumber(element, targetValue, options = {}) {
@@ -1199,13 +1222,9 @@ function renderPage(page) {
 
 /* ================= HELPERS ================= */
 function getTotalConversionRate() {
-  const summary = getFilteredSummary();
+  const metrics = getFilteredMetrics(currentChannel, currentDateRange);
 
-  if (summary.total_pengunjung === 0) {
-    return "0.0";
-  }
-
-  return ((summary.total_berkuliah / summary.total_pengunjung) * 100).toFixed(1);
+  return formatConversionRate(metrics.conversion_rate);
 }
 
 function getSummaryStages() {
@@ -1285,7 +1304,7 @@ function renderOverview() {
 
       <div class="summary-card">
         <h3>Conversion Rate</h3>
-        <p data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="1">${getTotalConversionRate()}%</p>
+        <p data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="2">${getTotalConversionRate()}%</p>
       </div>
     </section>
 
@@ -1317,7 +1336,7 @@ function renderOverview() {
         <p>
           Best channel:
           <strong>${bestSource.name}</strong>
-          with conversion rate ${bestSource.conversion_rate}%.
+          with conversion rate ${formatConversionRate(bestSource.conversion_rate)}%.
         </p>
 
         ${getReportExportMarkup()}
@@ -1358,7 +1377,7 @@ function renderChannelAnalysis() {
 
           <div>
             <span>Conv. Rate</span>
-            <strong data-count-up data-value="${Number(source.conversion_rate)}" data-format="percent" data-decimals="2">${source.conversion_rate}%</strong>
+            <strong data-count-up data-value="${Number(source.conversion_rate)}" data-format="percent" data-decimals="2">${formatConversionRate(source.conversion_rate)}%</strong>
           </div>
         </div>
       </div>
@@ -1422,7 +1441,7 @@ function renderFunnelDepth() {
 
         <div class="card">
           <h3>Final Yield</h3>
-          <div class="final-yield" data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="1">${getTotalConversionRate()}%</div>
+          <div class="final-yield" data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="2">${getTotalConversionRate()}%</div>
           <p>Overall conversion from visitor to enrolled student.</p>
           ${getReportExportMarkup()}
         </div>
@@ -1453,7 +1472,7 @@ function renderDataTable() {
         <td data-count-up data-value="${Number(source.test)}">${Number(source.test).toLocaleString("id-ID")}</td>
         <td data-count-up data-value="${Number(source.daftar_ulang)}">${Number(source.daftar_ulang).toLocaleString("id-ID")}</td>
         <td data-count-up data-value="${Number(source.berkuliah)}">${Number(source.berkuliah).toLocaleString("id-ID")}</td>
-        <td data-count-up data-value="${Number(source.conversion_rate)}" data-format="percent" data-decimals="2">${source.conversion_rate}%</td>
+        <td data-count-up data-value="${Number(source.conversion_rate)}" data-format="percent" data-decimals="2">${formatConversionRate(source.conversion_rate)}%</td>
         <td>${source.status}</td>
       </tr>
     `;
@@ -1474,7 +1493,7 @@ function renderDataTable() {
 
       <div class="summary-card">
         <h3>Average CVR</h3>
-        <p data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="1">${getTotalConversionRate()}%</p>
+        <p data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="2">${getTotalConversionRate()}%</p>
       </div>
 
       <div class="summary-card">
@@ -1508,7 +1527,7 @@ function renderDataTable() {
             <td data-count-up data-value="${summary.total_test}">${summary.total_test.toLocaleString("id-ID")}</td>
             <td data-count-up data-value="${summary.total_daftar_ulang}">${summary.total_daftar_ulang.toLocaleString("id-ID")}</td>
             <td data-count-up data-value="${summary.total_berkuliah}">${summary.total_berkuliah.toLocaleString("id-ID")}</td>
-            <td data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="1">${getTotalConversionRate()}%</td>
+            <td data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="2">${getTotalConversionRate()}%</td>
             <td>Overall</td>
           </tr>
         </tbody>
@@ -1830,7 +1849,7 @@ function downloadCSVReport() {
       source.test,
       source.daftar_ulang,
       source.berkuliah,
-      `${source.conversion_rate}%`,
+      `${formatConversionRate(source.conversion_rate)}%`,
       source.status
     ]);
   });
@@ -1915,7 +1934,9 @@ function downloadPDFReport() {
   addPDFLine(
     doc,
     "Best Channel",
-    reportData.bestSource ? `${reportData.bestSource.name} (${reportData.bestSource.conversion_rate}%)` : "-",
+    reportData.bestSource
+      ? `${reportData.bestSource.name} (${formatConversionRate(reportData.bestSource.conversion_rate)}%)`
+      : "-",
     left,
     y
   );
