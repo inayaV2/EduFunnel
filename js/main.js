@@ -925,7 +925,7 @@ function getChartDataByDateRange() {
     return dailyChartData;
   }
 
-  if (currentDateRange === "month") {
+  if (currentDateRange === "month" || currentDateRange === "30") {
     return latestMonth ? [latestMonth] : dailyChartData;
   }
 
@@ -982,37 +982,34 @@ function getAggregatedYearlyData(channel = currentChannel) {
   };
 }
 
-function getCurrentAggregatedData() {
-  if (currentDateRange === "year") {
-    return getAggregatedYearlyData(currentChannel);
-  }
+function summarizeMetricSources(sources) {
+  return sources.reduce(function (totals, source) {
+    totals.total_pengunjung += Number(source.pengunjung || 0);
+    totals.total_daftar += Number(source.daftar || 0);
+    totals.total_test += Number(source.test || 0);
+    totals.total_daftar_ulang += Number(source.daftar_ulang || 0);
+    totals.total_berkuliah += Number(source.berkuliah || 0);
 
-  return getAggregatedDailyData(currentDateRange, currentChannel);
+    return totals;
+  }, {
+    total_pengunjung: 0,
+    total_daftar: 0,
+    total_test: 0,
+    total_daftar_ulang: 0,
+    total_berkuliah: 0
+  });
 }
 
-function getDateRangeSources() {
-  return getCurrentAggregatedData().sources;
-}
-
-/* ================= FILTERED DATA ================= */
-function getFilteredSources() {
-  return getDateRangeSources();
-}
-
-function getChannelAnalysisSources() {
-  if (currentDateRange !== "month" && currentDateRange !== "30") {
-    return getFilteredSources();
-  }
-
+function getMonthlyMetricSources(channel) {
   const latestMonth = getLatestMonthlyTraffic();
 
   if (!latestMonth) {
-    return getFilteredSources();
+    return [];
   }
 
   return Object.entries(CHANNEL_TRAFFIC_KEYS)
     .filter(function ([channelName]) {
-      return currentChannel === "all" || channelName === currentChannel;
+      return channel === "all" || channelName === channel;
     })
     .map(function ([channelName, trafficKey], index) {
       const visitors = Number(latestMonth[trafficKey] || 0);
@@ -1034,18 +1031,58 @@ function getChannelAnalysisSources() {
     });
 }
 
+function getFilteredMetrics(channel = currentChannel, dateRange = currentDateRange) {
+  if (dateRange === "month" || dateRange === "30") {
+    const monthlySources = getMonthlyMetricSources(channel);
+
+    return {
+      range: "month",
+      channel: channel,
+      sources: monthlySources,
+      summary: summarizeMetricSources(monthlySources),
+      source: "monthly_channel_traffic"
+    };
+  }
+
+  if (dateRange === "year") {
+    const yearlyData = getAggregatedYearlyData(channel);
+
+    if (channel === "all" && appData.summary) {
+      yearlyData.summary = {
+        total_pengunjung: Number(appData.summary.total_pengunjung || 0),
+        total_daftar: Number(appData.summary.total_daftar || 0),
+        total_test: Number(appData.summary.total_test || 0),
+        total_daftar_ulang: Number(appData.summary.total_daftar_ulang || 0),
+        total_berkuliah: Number(appData.summary.total_berkuliah || 0)
+      };
+      yearlyData.source = "summary_metrics_and_funnel_sources";
+    }
+
+    return yearlyData;
+  }
+
+  return getAggregatedDailyData("7", channel);
+}
+
+/* ================= FILTERED DATA ================= */
+function getFilteredSources() {
+  return getFilteredMetrics(currentChannel, currentDateRange).sources;
+}
+
 function getFilteredSummary() {
-  return getCurrentAggregatedData().summary;
+  return getFilteredMetrics(currentChannel, currentDateRange).summary;
 }
 
 function getDateRangeLabel() {
-  if (currentDateRange === "month") return "This Month";
+  if (currentDateRange === "month" || currentDateRange === "30") return "This Month";
   if (currentDateRange === "year") return "This Year";
   return "Last 7 Days";
 }
 
 function getChannelTrafficTitle() {
-  if (currentDateRange === "month") return "This Month Channel Traffic";
+  if (currentDateRange === "month" || currentDateRange === "30") {
+    return "This Month Channel Traffic";
+  }
   if (currentDateRange === "year") return "Monthly Channel Traffic";
   return "Last 7 Days Channel Traffic";
 }
@@ -1293,7 +1330,7 @@ function renderOverview() {
 
 /* ================= CHANNEL ANALYSIS ================= */
 function renderChannelAnalysis() {
-  const filteredSources = getChannelAnalysisSources();
+  const filteredSources = getFilteredSources();
 
   if (filteredSources.length === 0) {
     renderEmptyState();
