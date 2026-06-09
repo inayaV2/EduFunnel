@@ -40,7 +40,7 @@ window.eduFunnelData = {
     51
   ],
   daily_channel_traffic: [
-    { date: "2025-12-25", channel: "Google Ads", pengunjung: 1, daftar: 1, test: 1, daftar_ulang: 0, berkuliah: 0 },
+    { date: "2025-12-25", channel: "Google Ads", pengunjung: 1, daftar: 1, test: 1, daftar_ulang: 0, berkuliah: 1 },
     { date: "2025-12-25", channel: "Instagram", pengunjung: 1, daftar: 0, test: 0, daftar_ulang: 0, berkuliah: 0 },
     { date: "2025-12-25", channel: "Twitter/X", pengunjung: 1, daftar: 0, test: 0, daftar_ulang: 0, berkuliah: 0 },
     { date: "2025-12-25", channel: "Website", pengunjung: 0, daftar: 0, test: 0, daftar_ulang: 0, berkuliah: 0 },
