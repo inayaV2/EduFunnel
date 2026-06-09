@@ -1239,6 +1239,55 @@ function validateFunnelOrder(label, metrics) {
   }
 }
 
+function recalculateMetricsFromChannelRows(metrics) {
+  const channelRows = (Array.isArray(metrics.sources) ? metrics.sources : []).map(function (source) {
+    const visitors = Number(source.pengunjung || 0);
+    const enrolled = Number(source.berkuliah || 0);
+    const conversionRate = calculateConversionRate(visitors, enrolled);
+
+    return {
+      ...source,
+      pengunjung: visitors,
+      daftar: Number(source.daftar || 0),
+      test: Number(source.test || 0),
+      daftar_ulang: Number(source.daftar_ulang || 0),
+      berkuliah: enrolled,
+      conversion_rate: Number(formatConversionRate(conversionRate)),
+      drop_off: visitors > 0 ? Number(formatConversionRate(100 - conversionRate)) : 0
+    };
+  });
+  const totals = channelRows.reduce(function (result, row) {
+    result.total_pengunjung += row.pengunjung;
+    result.total_daftar += row.daftar;
+    result.total_test += row.test;
+    result.total_daftar_ulang += row.daftar_ulang;
+    result.total_berkuliah += row.berkuliah;
+
+    return result;
+  }, {
+    total_pengunjung: 0,
+    total_daftar: 0,
+    total_test: 0,
+    total_daftar_ulang: 0,
+    total_berkuliah: 0
+  });
+
+  totals.total_conversion_rate = calculateConversionRate(
+    totals.total_pengunjung,
+    totals.total_berkuliah
+  );
+
+  console.log("CHANNEL ROWS", channelRows);
+  console.log("TOTAL RECALCULATED", totals);
+
+  return {
+    ...metrics,
+    sources: channelRows,
+    summary: totals,
+    conversion_rate: totals.total_conversion_rate
+  };
+}
+
 function getMetricsByRangeAndChannel(range = currentDateRange, channel = currentChannel) {
   let metrics;
 
@@ -1246,24 +1295,11 @@ function getMetricsByRangeAndChannel(range = currentDateRange, channel = current
     metrics = getAggregatedMonthlyData(channel);
   } else if (range === "year") {
     metrics = getAggregatedYearlyData(channel);
-
-    if (channel === "all" && appData.summary) {
-      metrics.summary = {
-        total_pengunjung: Number(appData.summary.total_pengunjung || 0),
-        total_daftar: Number(appData.summary.total_daftar || 0),
-        total_test: Number(appData.summary.total_test || 0),
-        total_daftar_ulang: Number(appData.summary.total_daftar_ulang || 0),
-        total_berkuliah: Number(appData.summary.total_berkuliah || 0)
-      };
-      metrics.conversion_rate = calculateConversionRate(
-        metrics.summary.total_pengunjung,
-        metrics.summary.total_berkuliah
-      );
-      metrics.source = "summary_metrics";
-    }
   } else {
     metrics = getAggregatedDailyData("7", channel);
   }
+
+  metrics = recalculateMetricsFromChannelRows(metrics);
 
   metrics.sources.forEach(function (source) {
     validateFunnelOrder(`${metrics.source}:${source.name}`, source);
@@ -1427,14 +1463,15 @@ function renderPage(page) {
 }
 
 /* ================= HELPERS ================= */
-function getTotalConversionRate() {
-  const metrics = getMetricsByRangeAndChannel(currentDateRange, currentChannel);
+function getTotalConversionRate(metrics = getMetricsByRangeAndChannel(
+  currentDateRange,
+  currentChannel
+)) {
 
   return formatConversionRate(metrics.conversion_rate);
 }
 
-function getSummaryStages() {
-  const summary = getFilteredSummary();
+function getSummaryStages(summary = getFilteredSummary()) {
 
   return [
     { label: "Pengunjung", count: Number(summary.total_pengunjung) },
@@ -1475,15 +1512,16 @@ function getHighestDrop(stages) {
 
 /* ================= OVERVIEW ================= */
 function renderOverview() {
-  const filteredSources = getFilteredSources();
+  const metrics = getMetricsByRangeAndChannel(currentDateRange, currentChannel);
+  const filteredSources = metrics.sources;
 
   if (filteredSources.length === 0) {
     renderEmptyState();
     return;
   }
 
-  const summary = getFilteredSummary();
-  const stages = getSummaryStages();
+  const summary = metrics.summary;
+  const stages = getSummaryStages(summary);
   const highestDrop = getHighestDrop(stages);
 
   const bestSource = [...filteredSources].sort(function (a, b) {
@@ -1510,7 +1548,7 @@ function renderOverview() {
 
       <div class="summary-card">
         <h3>Conversion Rate</h3>
-        <p data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="2">${getTotalConversionRate()}%</p>
+        <p data-count-up data-value="${getTotalConversionRate(metrics)}" data-format="percent" data-decimals="2">${getTotalConversionRate(metrics)}%</p>
       </div>
     </section>
 
@@ -1555,7 +1593,8 @@ function renderOverview() {
 
 /* ================= CHANNEL ANALYSIS ================= */
 function renderChannelAnalysis() {
-  const filteredSources = getFilteredSources();
+  const metrics = getMetricsByRangeAndChannel(currentDateRange, currentChannel);
+  const filteredSources = metrics.sources;
 
   if (filteredSources.length === 0) {
     renderEmptyState();
@@ -1613,14 +1652,15 @@ function renderChannelAnalysis() {
 
 /* ================= FUNNEL DEPTH ================= */
 function renderFunnelDepth() {
-  const filteredSources = getFilteredSources();
+  const metrics = getMetricsByRangeAndChannel(currentDateRange, currentChannel);
+  const filteredSources = metrics.sources;
 
   if (filteredSources.length === 0) {
     renderEmptyState();
     return;
   }
 
-  const stages = getSummaryStages();
+  const stages = getSummaryStages(metrics.summary);
   const highestDrop = getHighestDrop(stages);
 
   app.innerHTML = `
@@ -1647,7 +1687,7 @@ function renderFunnelDepth() {
 
         <div class="card">
           <h3>Final Yield</h3>
-          <div class="final-yield" data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="2">${getTotalConversionRate()}%</div>
+          <div class="final-yield" data-count-up data-value="${getTotalConversionRate(metrics)}" data-format="percent" data-decimals="2">${getTotalConversionRate(metrics)}%</div>
           <p>Overall conversion from visitor to enrolled student.</p>
           ${getReportExportMarkup()}
         </div>
@@ -1660,14 +1700,15 @@ function renderFunnelDepth() {
 
 /* ================= DATA TABLE ================= */
 function renderDataTable() {
-  const filteredSources = getFilteredSources();
+  const metrics = getMetricsByRangeAndChannel(currentDateRange, currentChannel);
+  const filteredSources = metrics.sources;
 
   if (filteredSources.length === 0) {
     renderEmptyState();
     return;
   }
 
-  const summary = getFilteredSummary();
+  const summary = metrics.summary;
 
   const rows = filteredSources.map(function (source) {
     return `
@@ -1699,7 +1740,7 @@ function renderDataTable() {
 
       <div class="summary-card">
         <h3>Average CVR</h3>
-        <p data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="2">${getTotalConversionRate()}%</p>
+        <p data-count-up data-value="${getTotalConversionRate(metrics)}" data-format="percent" data-decimals="2">${getTotalConversionRate(metrics)}%</p>
       </div>
 
       <div class="summary-card">
@@ -1733,7 +1774,7 @@ function renderDataTable() {
             <td data-count-up data-value="${summary.total_test}">${summary.total_test.toLocaleString("id-ID")}</td>
             <td data-count-up data-value="${summary.total_daftar_ulang}">${summary.total_daftar_ulang.toLocaleString("id-ID")}</td>
             <td data-count-up data-value="${summary.total_berkuliah}">${summary.total_berkuliah.toLocaleString("id-ID")}</td>
-            <td data-count-up data-value="${getTotalConversionRate()}" data-format="percent" data-decimals="2">${getTotalConversionRate()}%</td>
+            <td data-count-up data-value="${getTotalConversionRate(metrics)}" data-format="percent" data-decimals="2">${getTotalConversionRate(metrics)}%</td>
             <td>Overall</td>
           </tr>
         </tbody>
