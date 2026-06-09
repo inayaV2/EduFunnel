@@ -5,6 +5,7 @@ let currentPage = "overview";
 let currentChannel = "all";
 let currentDateRange = "7";
 let supabaseClient = null;
+let activeDataSource = "none";
 
 const SUPABASE_URL = "https://tyjgxjawjqwerwemzkhy.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_afBHm3NGmsvCN7GUAKlNPw_-sAd5z26";
@@ -59,7 +60,16 @@ function createSupabaseClient() {
   }
 
   if (!supabaseClient) {
-    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: {
+        fetch: function (url, options = {}) {
+          return fetch(url, {
+            ...options,
+            cache: "no-store"
+          });
+        }
+      }
+    });
   }
 
   return supabaseClient;
@@ -194,6 +204,28 @@ function mapSupabaseData(summaryRow, sourcesRows, trafficRows, dailyRows) {
     throw new Error("Format data Supabase tidak lengkap.");
   }
 
+  const requiredDailyFields = [
+    "date",
+    "channel",
+    "pengunjung",
+    "daftar",
+    "test",
+    "daftar_ulang",
+    "berkuliah"
+  ];
+
+  dailyRows.forEach(function (row, index) {
+    const missingFields = requiredDailyFields.filter(function (field) {
+      return !Object.prototype.hasOwnProperty.call(row, field);
+    });
+
+    if (missingFields.length > 0) {
+      throw new Error(
+        `daily_channel_traffic baris ${index + 1} tidak memiliki kolom: ${missingFields.join(", ")}`
+      );
+    }
+  });
+
   const summary = {
     total_pengunjung: Number(summaryRow.total_pengunjung),
     total_daftar: Number(summaryRow.total_daftar),
@@ -309,8 +341,24 @@ async function fetchSupabaseData() {
   if (sourcesResult.error) throw sourcesResult.error;
   if (trafficResult.error) throw trafficResult.error;
   if (dailyResult.error) throw dailyResult.error;
+  if (!dailyResult.data || dailyResult.data.length === 0) {
+    throw new Error(
+      "Query daily_channel_traffic berhasil tetapi tidak mengembalikan data. Periksa seed data dan RLS SELECT policy."
+    );
+  }
 
-  return mapSupabaseData(summaryResult.data, sourcesResult.data, trafficResult.data, dailyResult.data);
+  console.log("daily_channel_traffic", dailyResult.data);
+
+  const mappedData = mapSupabaseData(
+    summaryResult.data,
+    sourcesResult.data,
+    trafficResult.data,
+    dailyResult.data
+  );
+
+  console.log("DATA SUPABASE", mappedData);
+
+  return mappedData;
 }
 
 async function fetchJsonFallbackData() {
@@ -341,13 +389,22 @@ async function fetchEduFunnelData() {
     `;
 
     appData = await fetchSupabaseData();
+    activeDataSource = "supabase";
+    console.info("EduFunnel data source: SUPABASE");
 
     setupNavigation();
     setupFilters();
 
     renderPage("overview");
   } catch (error) {
-    console.error("Gagal mengambil data dari Supabase:", error);
+    activeDataSource = "supabase-error";
+    console.error(
+      "SUPABASE FETCH FAILED: dashboard tidak menerima data terbaru dari Supabase.",
+      error
+    );
+    console.warn(
+      "EduFunnel akan mencoba data_funnel.json sebagai fallback. Data fallback mungkin tidak sama dengan database."
+    );
 
     try {
       app.innerHTML = `
@@ -364,6 +421,8 @@ async function fetchEduFunnelData() {
       }
 
       appData = fallbackData;
+      activeDataSource = "json-fallback";
+      console.warn("EduFunnel data source: JSON FALLBACK", fallbackData);
       setupNavigation();
       setupFilters();
       renderPage("overview");
@@ -445,7 +504,7 @@ function getDailyChannelTraffic() {
 }
 
 function getDailyChannelSummary() {
-  return getDailyChannelTraffic().reduce(function (totals, item) {
+  const dailySummary = getDailyChannelTraffic().reduce(function (totals, item) {
     if (!totals[item.channel]) {
       totals[item.channel] = {
         pengunjung: 0,
@@ -464,6 +523,10 @@ function getDailyChannelSummary() {
 
     return totals;
   }, {});
+
+  console.log("daily_channel_traffic summary", dailySummary);
+
+  return dailySummary;
 }
 
 function getChartDataByDateRange() {
